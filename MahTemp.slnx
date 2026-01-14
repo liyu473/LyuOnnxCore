@@ -1,3 +1,5 @@
 <Solution>
   <Project Path="MahTemp/MahTemp.csproj" />
+  <Project Path="TcpCore/TcpCore.csproj" Id="851aa2ef-8203-48db-b9cc-a32999be2427" />
+  <Project Path="VisualRecognition/VisualRecognition.csproj" Id="b8676a63-5624-48b7-950d-b6e952fc50f2" />
 </Solution>
