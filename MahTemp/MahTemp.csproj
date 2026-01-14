@@ -14,12 +14,12 @@
 
 	<ItemGroup>
 		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
-		<PackageReference Include="LyuExtensions" Version="1.1.6" />
-		<PackageReference Include="LyuLogExtension" Version="1.7.1" />
-		<PackageReference Include="LyuSyncConfiguration" Version="1.0.3" />
+		<PackageReference Include="LyuExtensions" Version="1.1.7" />
+		<PackageReference Include="LyuLogExtension" Version="1.7.2" />
+		<PackageReference Include="LyuSyncConfiguration" Version="1.0.4" />
 		<PackageReference Include="MahApps.Metro" Version="3.0.0-rc0529" />
 		<PackageReference Include="MahApps.Metro.IconPacks.Material" Version="6.2.1" />
-		<PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.1" />
+		<PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.2" />
 	</ItemGroup>
 
 	<ItemGroup>
