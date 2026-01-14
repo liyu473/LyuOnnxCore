@@ -1,7 +1,7 @@
 ﻿using System.Diagnostics.CodeAnalysis;
 using System.Windows;
 using System.Windows.Threading;
-using LogExtension.Extensions;
+using LyuLogExtension.Extensions;
 using MahTemp.Services;
 using MahTemp.Views;
 using Microsoft.Extensions.DependencyInjection;
