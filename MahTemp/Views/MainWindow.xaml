@@ -1,0 +1,198 @@
+﻿<mah:MetroWindow
+    x:Class="MahTemp.Views.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controlzEx="urn:controlzex"
+    xmlns:converters="clr-namespace:MahTemp.Converters"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:i="http://schemas.microsoft.com/xaml/behaviors"
+    xmlns:iconPacks="http://metro.mahapps.com/winfx/xaml/iconpacks"
+    xmlns:local="clr-namespace:MahTemp"
+    xmlns:mah="clr-namespace:MahApps.Metro.Controls;assembly=MahApps.Metro"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:viewmodels="clr-namespace:MahTemp.ViewModels"
+    Title="{Binding AppName}"
+    Width="1100"
+    Height="700"
+    controlzEx:WindowBackdropManager.BackdropType="Mica"
+    d:DataContext="{d:DesignInstance Type=viewmodels:MainViewModel}"
+    GlowColor="{DynamicResource MahApps.Colors.Accent}"
+    ResizeMode="CanResizeWithGrip"
+    ShowIconOnTitleBar="True"
+    Style="{DynamicResource MahApps.Styles.MetroWindow.Clean}"
+    TitleCharacterCasing="Normal"
+    WindowStartupLocation="CenterScreen"
+    mc:Ignorable="d">
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="pack://application:,,,/MahApps.Metro;component/Styles/Clean/Controls.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+
+            <converters:LabelToViewConverter x:Key="LabelToViewConverter" />
+
+            <DataTemplate x:Key="HamburgerMenuItem" DataType="{x:Type mah:HamburgerMenuIconItem}">
+                <Grid Height="48">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="{Binding RelativeSource={RelativeSource AncestorType={x:Type mah:HamburgerMenu}}, Path=CompactPaneLength}" />
+                        <ColumnDefinition />
+                    </Grid.ColumnDefinitions>
+                    <ContentControl
+                        Margin="12"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Content="{Binding Icon}"
+                        Focusable="False"
+                        IsTabStop="False" />
+                    <TextBlock
+                        Grid.Column="1"
+                        VerticalAlignment="Center"
+                        FontSize="16"
+                        Text="{Binding Label}" />
+                </Grid>
+            </DataTemplate>
+
+            <DataTemplate x:Key="HamburgerOptionsMenuItem" DataType="{x:Type mah:HamburgerMenuIconItem}">
+                <Grid Height="48">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="{Binding RelativeSource={RelativeSource AncestorType={x:Type mah:HamburgerMenu}}, Path=CompactPaneLength}" />
+                        <ColumnDefinition />
+                    </Grid.ColumnDefinitions>
+                    <ContentControl
+                        Margin="12"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Content="{Binding Icon}"
+                        Focusable="False"
+                        IsTabStop="False" />
+                    <TextBlock
+                        Grid.Column="1"
+                        VerticalAlignment="Center"
+                        FontSize="16"
+                        Text="{Binding Label}" />
+                </Grid>
+            </DataTemplate>
+        </ResourceDictionary>
+    </Window.Resources>
+
+    <mah:MetroWindow.LeftWindowCommands>
+        <mah:WindowCommands ShowSeparators="False">
+            <TextBlock
+                Margin="10,0"
+                VerticalAlignment="Center"
+                FontWeight="Bold"
+                Text="{Binding AppName}" />
+            <TextBlock
+                Margin="10,0"
+                VerticalAlignment="Center"
+                Foreground="Gray"
+                Text="{Binding AppVersion}" />
+        </mah:WindowCommands>
+    </mah:MetroWindow.LeftWindowCommands>
+
+    <mah:MetroWindow.RightWindowCommands>
+        <mah:WindowCommands ShowSeparators="True">
+            <Button mah:ControlsHelper.ContentCharacterCasing="Normal">
+                <i:Interaction.Triggers>
+                    <i:EventTrigger EventName="Click">
+                        <i:ChangePropertyAction
+                            PropertyName="IsOpen"
+                            TargetName="AboutFlyout"
+                            Value="True" />
+                    </i:EventTrigger>
+                </i:Interaction.Triggers>
+                <StackPanel Orientation="Horizontal">
+                    <iconPacks:PackIconMaterial
+                        Width="12"
+                        Height="12"
+                        VerticalAlignment="Center"
+                        Kind="Help" />
+                    <TextBlock
+                        Margin="4,0,0,0"
+                        VerticalAlignment="Center"
+                        Text="About" />
+                </StackPanel>
+            </Button>
+        </mah:WindowCommands>
+    </mah:MetroWindow.RightWindowCommands>
+
+    <mah:MetroWindow.Flyouts>
+        <mah:FlyoutsControl>
+            <mah:Flyout
+                x:Name="AboutFlyout"
+                Width="300"
+                AllowDrop="True"
+                AreAnimationsEnabled="True"
+                Header="About"
+                IsModal="True"
+                IsPinned="False"
+                Position="Right"
+                Theme="Adapt">
+                <StackPanel Margin="20">
+                    <TextBlock
+                        FontSize="18"
+                        FontWeight="Bold"
+                        Text="{Binding AppName}" />
+                    <TextBlock Margin="0,8,0,0" Text="{Binding AppVersion, StringFormat='版本: {0}'}" />
+                    <TextBlock
+                        Margin="0,16,0,0"
+                        Text="About Content Here"
+                        TextWrapping="Wrap" />
+                </StackPanel>
+            </mah:Flyout>
+        </mah:FlyoutsControl>
+    </mah:MetroWindow.Flyouts>
+
+    <Grid>
+        <mah:HamburgerMenu
+            x:Name="HamburgerMenuControl"
+            DisplayMode="CompactInline"
+            HamburgerVisibility="Visible"
+            HamburgerWidth="48"
+            IsPaneOpen="True"
+            ItemInvoked="HamburgerMenuControl_OnItemInvoked"
+            ItemTemplate="{StaticResource HamburgerMenuItem}"
+            OptionsItemTemplate="{StaticResource HamburgerOptionsMenuItem}"
+            PaneBackground="Transparent"
+            SelectedIndex="2"
+            Style="{StaticResource MahApps.Styles.HamburgerMenu.CreatorsUpdate}"
+            VerticalScrollBarOnLeftSide="False">
+            <mah:HamburgerMenu.ItemsSource>
+                <mah:HamburgerMenuItemCollection>
+                    <mah:HamburgerMenuHeaderItem Label="目录" />
+                    <mah:HamburgerMenuSeparatorItem />
+                    <mah:HamburgerMenuIconItem Icon="{iconPacks:Material Kind=Home}" Label="Home" />
+                </mah:HamburgerMenuItemCollection>
+            </mah:HamburgerMenu.ItemsSource>
+
+            <mah:HamburgerMenu.OptionsItemsSource>
+                <mah:HamburgerMenuItemCollection>
+                    <mah:HamburgerMenuIconItem Icon="{iconPacks:Material Kind=Cog}" Label="Settings" />
+                </mah:HamburgerMenuItemCollection>
+            </mah:HamburgerMenu.OptionsItemsSource>
+
+            <mah:HamburgerMenu.ContentTemplate>
+                <DataTemplate>
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="48" />
+                            <RowDefinition />
+                        </Grid.RowDefinitions>
+                        <Border Grid.Row="0">
+                            <TextBlock
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                FontSize="24"
+                                Text="{Binding Label}" />
+                        </Border>
+                        <mah:TransitioningContentControl
+                            Grid.Row="1"
+                            Content="{Binding Label, Converter={StaticResource LabelToViewConverter}}"
+                            RestartTransitionOnContentChange="True"
+                            Transition="Left" />
+                    </Grid>
+                </DataTemplate>
+            </mah:HamburgerMenu.ContentTemplate>
+        </mah:HamburgerMenu>
+    </Grid>
+</mah:MetroWindow>
