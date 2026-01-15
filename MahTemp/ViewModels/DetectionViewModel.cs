@@ -1,0 +1,152 @@
+using System.Collections.ObjectModel;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using Extensions;
+using LyuOnnxCore.Extensions;
+using LyuOnnxCore.Helpers;
+using LyuOnnxCore.Models;
+using MahTemp.Enums;
+using Microsoft.ML.OnnxRuntime;
+using OpenCvSharp;
+
+namespace MahTemp.ViewModels;
+
+public partial class DetectionViewModel : ViewModelBase
+{
+    public DetectionViewModel()
+    {
+        OnnxModelHelper.GetOnnxModels("OnnxModel").ForEach(o => OnnxSources.Add(o));
+        SelectedOnnxModel = OnnxSources.FirstOrDefault();
+        LoadLabelsFromEnum();
+        SelelctedLabels.CollectionChanged += SelelctedLabels_CollectionChanged;
+    }
+
+    public ObservableCollection<OnnxModelInfo> OnnxSources { get; } = [];
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(StartDetectionCommand))]
+    public partial OnnxModelInfo? SelectedOnnxModel { get; set; }
+
+    public ObservableCollection<string> LabesSource { get; } = [];
+
+    public ObservableCollection<string> SelelctedLabels { get; } = [];
+
+    [ObservableProperty]
+    public partial double ConfidenceThreshold { get; set; } = 0.01;
+
+    #region 检测设置
+
+    [ObservableProperty]
+    public partial double NmsThreshold { get; set; } = 0.45;
+
+    [ObservableProperty]
+    public partial bool ShowConfidence { get; set; } = true;
+
+    [ObservableProperty]
+    public partial bool ShowLabel { get; set; } = true;
+
+    [ObservableProperty]
+    public partial int BoxThickness { get; set; } = 2;
+
+    [ObservableProperty]
+    public partial double FontScale { get; set; } = 0.5;
+
+    [ObservableProperty]
+    public partial Color BoxColor { get; set; } = Colors.Green;
+
+    [ObservableProperty]
+    public partial Color TextColor { get; set; } = Colors.Yellow;
+
+    #endregion
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(OriginalImage))]
+    [NotifyCanExecuteChangedFor(nameof(StartDetectionCommand))]
+    public partial string? ImagePath { get; set; }
+    partial void OnImagePathChanged(string? value)
+    {
+        ResultImage = null;
+    }
+
+    public  BitmapImage? OriginalImage => ImagePath.IsNullOrWhiteSpace() ? null :  new (new Uri(ImagePath));
+
+    [ObservableProperty]
+    public partial BitmapSource? ResultImage { get; set; }
+
+    private void SelelctedLabels_CollectionChanged(
+        object? sender,
+        System.Collections.Specialized.NotifyCollectionChangedEventArgs e
+    )
+    {
+        StartDetectionCommand.NotifyCanExecuteChanged();
+    }
+
+    [RelayCommand]
+    private void LoadLabelsFromEnum()
+    {
+        LabesSource.Clear();
+        var labels = LabelHelper.GetLabelsFromEnum<DetectionLabel>();
+        labels.ForEach(l => LabesSource.Add(l));
+    }
+
+    [RelayCommand]
+    private void LoadLabesFromFile()
+    {
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "选择标签文件",
+            Filter = "文本文件 (*.txt)|*.txt|所有文件 (*.*)|*.*",
+            DefaultExt = ".txt",
+        };
+
+        if (dialog.ShowDialog() == true)
+        {
+            LabesSource.Clear();
+            var labels = LabelHelper.LoadLabelsFromFile(dialog.FileName);
+            labels.ForEach(l => LabesSource.Add(l));
+        }
+    }
+
+    [RelayCommand]
+    private void LoadImage()
+    {
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "选择图片",
+            Filter = "图片文件 (*.jpg;*.jpeg;*.png;*.bmp)|*.jpg;*.jpeg;*.png;*.bmp|所有文件 (*.*)|*.*",
+        };
+
+        if (dialog.ShowDialog() == true)
+        {
+            ImagePath = dialog.FileName;           
+            ResultImage = null;
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanStartDetection))]
+    private void StartDetection()
+    {
+        using var session = new InferenceSession(SelectedOnnxModel!.FullPath);
+        using var image = Cv2.ImRead(ImagePath!);
+
+        var options = new DetectionOptions
+        {
+            ConfidenceThreshold = (float)ConfidenceThreshold,
+            NmsThreshold = (float)NmsThreshold,
+            ShowConfidence = ShowConfidence,
+            ShowLabel = ShowLabel,
+            BoxThickness = BoxThickness,
+            FontScale = FontScale,
+            BoxColor = (BoxColor.B, BoxColor.G, BoxColor.R),
+            TextColor = (TextColor.B, TextColor.G, TextColor.R),
+            FilterLabels = [.. SelelctedLabels]
+        };
+
+        var resultMat = session.DetectAndDrawBoxes(image, [.. LabesSource], options);
+        ResultImage = resultMat.ToBitmapSource();
+    }
+
+    private bool CanStartDetection() => !ImagePath.IsNullOrWhiteSpace() && SelectedOnnxModel is not null && SelelctedLabels.Count > 0 ;
+}

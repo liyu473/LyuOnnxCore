@@ -2,6 +2,7 @@
     x:Class="MahTemp.App"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:converters="clr-namespace:MahTemp.Converters"
     xmlns:local="clr-namespace:MahTemp"
     xmlns:mah="clr-namespace:MahApps.Metro.Controls;assembly=MahApps.Metro">
     <Application.Resources>
@@ -13,6 +14,13 @@
                 <!--  Theme setting  -->
                 <ResourceDictionary Source="pack://application:,,,/MahApps.Metro;component/Styles/Themes/Light.Blue.xaml" />
             </ResourceDictionary.MergedDictionaries>
+
+            <!--  Converters  -->
+            <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter" />
+            <converters:InverseBoolConverter x:Key="InverseBoolConverter" />
+            <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+            <converters:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter" />
+
             <Style
                 x:Key="MahApps.Styles.MetroHeader.Horizontal"
                 BasedOn="{StaticResource MahApps.Styles.MetroHeader}"

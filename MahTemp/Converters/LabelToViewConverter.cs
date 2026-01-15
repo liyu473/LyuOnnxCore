@@ -14,6 +14,7 @@ public class LabelToViewConverter : IValueConverter
         {
             "Home" => App.GetService<Views.HomePage>(),
             "Settings" => App.GetService<Views.SettingsPage>(),
+            "Detection" => App.GetService<Views.DetectionPage>(),
             _ => null
         };
     }

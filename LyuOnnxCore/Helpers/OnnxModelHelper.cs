@@ -1,3 +1,4 @@
+using System.IO;
 using LyuOnnxCore.Models;
 
 namespace LyuOnnxCore.Helpers;
@@ -42,7 +43,7 @@ public static class OnnxModelHelper
             }
 
             // 按名称排序
-            models = models.OrderBy(m => m.Name).ToList();
+            models = [.. models.OrderBy(m => m.Name)];
         }
         catch (UnauthorizedAccessException ex)
         {

@@ -1,3 +1,7 @@
+using System.IO;
+using System.ComponentModel;
+using System.Reflection;
+
 namespace LyuOnnxCore.Helpers;
 
 /// <summary>
@@ -96,11 +100,41 @@ public static class LabelHelper
         if (string.IsNullOrWhiteSpace(labelsString))
             throw new ArgumentException("标签字符串不能为空", nameof(labelsString));
 
-        return labelsString
+        return [.. labelsString
             .Split(',')
             .Select(s => s.Trim())
-            .Where(s => !string.IsNullOrWhiteSpace(s))
-            .ToArray();
+            .Where(s => !string.IsNullOrWhiteSpace(s))];
+    }
+
+    /// <summary>
+    /// 从枚举类型获取标签名称数组
+    /// </summary>
+    /// <typeparam name="T">枚举类型</typeparam>
+    /// <returns>标签名称数组</returns>
+    public static string[] GetLabelsFromEnum<T>() where T : Enum
+    {
+        return Enum.GetNames(typeof(T));
+    }
+
+    /// <summary>
+    /// 从枚举类型获取描述列表
+    /// </summary>
+    /// <typeparam name="T">枚举类型</typeparam>
+    /// <returns>描述字符串数组</returns>
+    public static string[] GetLabelsFromEnumDescription<T>() where T : Enum
+    {
+        var type = typeof(T);
+        var names = Enum.GetNames(type);
+        var descriptions = new string[names.Length];
+
+        for (int i = 0; i < names.Length; i++)
+        {
+            var field = type.GetField(names[i]);
+            var attr = field?.GetCustomAttribute<DescriptionAttribute>();
+            descriptions[i] = attr?.Description ?? names[i];
+        }
+
+        return descriptions;
     }
 
     /// <summary>

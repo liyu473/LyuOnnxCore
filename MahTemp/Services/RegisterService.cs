@@ -11,6 +11,7 @@ public static class RegisterService
         services.AddSingleton<MainWindow>();
         services.AddTransient<HomePage>();
         services.AddTransient<SettingsPage>();
+        services.AddTransient<DetectionPage>();
     }
 
 
@@ -19,5 +20,6 @@ public static class RegisterService
         services.AddSingleton<MainViewModel>();
         services.AddSingleton<SettingsViewModel>();
         services.AddSingleton<HomeViewModel>();
+        services.AddSingleton<DetectionViewModel>();
     }
 }
