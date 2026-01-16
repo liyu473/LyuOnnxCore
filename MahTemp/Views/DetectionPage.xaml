@@ -106,7 +106,7 @@
                 mah:TabControlHelper.Underlined="TabPanel"
                 Background="Transparent"
                 Style="{StaticResource MahApps.Styles.TabControl.Animated}">
-                <TabItem Header="Yolo">
+                <TabItem Header="Onnx">
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />

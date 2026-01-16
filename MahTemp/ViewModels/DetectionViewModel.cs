@@ -4,10 +4,11 @@ using System.Windows.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Extensions;
-using LyuOnnxCore.Extensions;
+using LyuCvExCore.Extensions;
 using LyuOnnxCore.Helpers;
 using LyuOnnxCore.Models;
 using MahTemp.Enums;
+using MahTemp.Helper;
 using Microsoft.ML.OnnxRuntime;
 using OpenCvSharp;
 
@@ -131,20 +132,24 @@ public partial class DetectionViewModel : ViewModelBase
         using var session = new InferenceSession(SelectedOnnxModel!.FullPath);
         using var image = Cv2.ImRead(ImagePath!);
 
-        var options = new DetectionOptions
+        var detectionOptions = new DetectionOptions
         {
             ConfidenceThreshold = (float)ConfidenceThreshold,
             NmsThreshold = (float)NmsThreshold,
+            FilterLabels = [.. SelelctedLabels]
+        };
+
+        var drawOptions = new DrawOptions
+        {
             ShowConfidence = ShowConfidence,
             ShowLabel = ShowLabel,
             BoxThickness = BoxThickness,
             FontScale = FontScale,
             BoxColor = (BoxColor.B, BoxColor.G, BoxColor.R),
-            TextColor = (TextColor.B, TextColor.G, TextColor.R),
-            FilterLabels = [.. SelelctedLabels]
+            TextColor = (TextColor.B, TextColor.G, TextColor.R)
         };
 
-        var resultMat = session.DetectAndDrawBoxes(image, [.. LabesSource], options);
+        var resultMat = session.DetectAndDraw(image, [.. LabesSource], detectionOptions, drawOptions);
         ResultImage = resultMat.ToBitmapSource();
     }
 
