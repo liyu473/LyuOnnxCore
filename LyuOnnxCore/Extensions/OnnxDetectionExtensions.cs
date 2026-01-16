@@ -43,13 +43,145 @@ public static class OnnxDetectionExtensions
 
         if (options.FilterLabels is { Length: > 0 })
         {
-            results = results.Where(r => options.FilterLabels.Contains(r.LabelName)).ToList();
+            results = [.. results.Where(r => options.FilterLabels.Contains(r.LabelName))];
         }
 
         return results;
     }
 
+    /// <summary>
+    /// 在 ImageData 上绘制检测结果（仅绘制边界框，不含文字）
+    /// </summary>
+    /// <param name="image">原始图像数据</param>
+    /// <param name="detections">检测结果列表</param>
+    /// <param name="options">绘制选项</param>
+    /// <returns>绘制后的图像数据</returns>
+    public static ImageData DrawDetections(
+        this ImageData image,
+        List<DetectionResult> detections,
+        DrawOptions? options = null)
+    {
+        options ??= new DrawOptions();
+
+        // 复制图像数据
+        var result = new ImageData
+        {
+            Width = image.Width,
+            Height = image.Height,
+            Channels = image.Channels,
+            IsBgr = image.IsBgr,
+            Data = [.. image.Data]
+        };
+
+        foreach (var detection in detections)
+        {
+            var box = detection.BoundingBox;
+            DrawRectangle(result, box.X, box.Y, box.Width, box.Height,
+                options.BoxColor.R, options.BoxColor.G, options.BoxColor.B,
+                options.BoxThickness);
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// 执行检测并绘制结果（仅边界框）
+    /// </summary>
+    /// <param name="session">ONNX 推理会话</param>
+    /// <param name="imageData">图像数据</param>
+    /// <param name="labels">标签名称数组</param>
+    /// <param name="detectionOptions">检测选项</param>
+    /// <param name="drawOptions">绘制选项</param>
+    /// <returns>绘制后的图像数据</returns>
+    public static ImageData DetectAndDraw(
+        this InferenceSession session,
+        ImageData imageData,
+        string[] labels,
+        DetectionOptions? detectionOptions = null,
+        DrawOptions? drawOptions = null)
+    {
+        var results = session.Detect(imageData, labels, detectionOptions);
+        return imageData.DrawDetections(results, drawOptions);
+    }
+
     #region 私有辅助方法
+
+    /// <summary>
+    /// 在图像上绘制矩形框
+    /// </summary>
+    private static void DrawRectangle(ImageData image, int x, int y, int width, int height,
+        int r, int g, int b, int thickness)
+    {
+        // 确保坐标在图像范围内
+        int x1 = Math.Max(0, x);
+        int y1 = Math.Max(0, y);
+        int x2 = Math.Min(image.Width - 1, x + width);
+        int y2 = Math.Min(image.Height - 1, y + height);
+
+        // 绘制四条边
+        for (int t = 0; t < thickness; t++)
+        {
+            // 上边
+            DrawHorizontalLine(image, x1, x2, y1 + t, r, g, b);
+            // 下边
+            DrawHorizontalLine(image, x1, x2, y2 - t, r, g, b);
+            // 左边
+            DrawVerticalLine(image, y1, y2, x1 + t, r, g, b);
+            // 右边
+            DrawVerticalLine(image, y1, y2, x2 - t, r, g, b);
+        }
+    }
+
+    /// <summary>
+    /// 绘制水平线
+    /// </summary>
+    private static void DrawHorizontalLine(ImageData image, int x1, int x2, int y,
+        int r, int g, int b)
+    {
+        if (y < 0 || y >= image.Height) return;
+
+        for (int x = x1; x <= x2; x++)
+        {
+            if (x < 0 || x >= image.Width) continue;
+            SetPixel(image, x, y, r, g, b);
+        }
+    }
+
+    /// <summary>
+    /// 绘制垂直线
+    /// </summary>
+    private static void DrawVerticalLine(ImageData image, int y1, int y2, int x,
+        int r, int g, int b)
+    {
+        if (x < 0 || x >= image.Width) return;
+
+        for (int y = y1; y <= y2; y++)
+        {
+            if (y < 0 || y >= image.Height) continue;
+            SetPixel(image, x, y, r, g, b);
+        }
+    }
+
+    /// <summary>
+    /// 设置像素颜色
+    /// </summary>
+    private static void SetPixel(ImageData image, int x, int y, int r, int g, int b)
+    {
+        int idx = (y * image.Width + x) * image.Channels;
+
+        if (image.IsBgr)
+        {
+            image.Data[idx + 0] = (byte)b;
+            image.Data[idx + 1] = (byte)g;
+            image.Data[idx + 2] = (byte)r;
+        }
+        else
+        {
+            image.Data[idx + 0] = (byte)r;
+            image.Data[idx + 1] = (byte)g;
+            image.Data[idx + 2] = (byte)b;
+        }
+    }
 
     private static (DenseTensor<float> tensor, float ratio, int padW, int padH) PreprocessImage(
         ImageData image, int targetWidth, int targetHeight)

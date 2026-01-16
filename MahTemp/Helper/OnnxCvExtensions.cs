@@ -1,7 +1,11 @@
+using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Drawing.Text;
 using LyuOnnxCore.Extensions;
 using LyuOnnxCore.Models;
 using Microsoft.ML.OnnxRuntime;
 using OpenCvSharp;
+using OpenCvSharp.Extensions;
 
 namespace MahTemp.Helper;
 
@@ -55,7 +59,7 @@ public static class OnnxCvExtensions
     }
 
     /// <summary>
-    /// 在图像上绘制检测结果
+    /// 在图像上绘制检测结果（支持中文标签）
     /// </summary>
     public static Mat DrawDetections(this Mat image, List<DetectionResult> detections, DrawOptions? options = null)
     {
@@ -66,8 +70,25 @@ public static class OnnxCvExtensions
         {
             var box = detection.BoundingBox;
             var color = new Scalar(options.BoxColor.B, options.BoxColor.G, options.BoxColor.R);
-
             Cv2.Rectangle(result, new Rect(box.X, box.Y, box.Width, box.Height), color, options.BoxThickness);
+        }
+
+        using var bitmap = BitmapConverter.ToBitmap(result);
+        using var graphics = Graphics.FromImage(bitmap);
+        
+        // 设置文字渲染质量
+        graphics.SmoothingMode = SmoothingMode.AntiAlias;
+        graphics.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
+
+        // 计算字体大小（基于 FontScale）
+        float fontSize = (float)(12 * options.FontScale / 0.5);
+        using var font = new Font("Microsoft YaHei", fontSize, FontStyle.Bold);
+        using var textBrush = new SolidBrush(Color.FromArgb(options.TextColor.R, options.TextColor.G, options.TextColor.B));
+        using var bgBrush = new SolidBrush(Color.FromArgb(0, 0, 0, 0)); // 半透明黑色背景
+
+        foreach (var detection in detections)
+        {
+            var box = detection.BoundingBox;
 
             string label = "";
             if (options.ShowLabel)
@@ -77,15 +98,21 @@ public static class OnnxCvExtensions
 
             if (!string.IsNullOrEmpty(label))
             {
-                var textColor = new Scalar(options.TextColor.B, options.TextColor.G, options.TextColor.R);
-                int textY = box.Y - 5;
-                if (textY < 15) textY = box.Y + 20;
+                // 测量文字大小
+                var textSize = graphics.MeasureString(label, font);
+                
+                int textX = box.X;
+                int textY = box.Y - (int)textSize.Height - 2;
+                if (textY < 0) textY = box.Y + 2;
 
-                Cv2.PutText(result, label, new Point(box.X, textY),
-                    HersheyFonts.HersheySimplex, options.FontScale, textColor, 1);
+                // 绘制文字背景
+                graphics.FillRectangle(bgBrush, textX, textY, textSize.Width, textSize.Height);
+                
+                // 绘制文字
+                graphics.DrawString(label, font, textBrush, textX, textY);
             }
         }
 
-        return result;
+        return BitmapConverter.ToMat(bitmap);
     }
 }
