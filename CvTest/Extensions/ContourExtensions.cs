@@ -1,4 +1,5 @@
 using OpenCvSharp;
+using LyuCvExCore.Models;
 
 namespace LyuCvExCore.Extensions;
 
@@ -186,6 +187,88 @@ public static class ContourExtensions
         return contourInfos.OrderByDescending(c => c.Area).FirstOrDefault();
     }
 
+    /// <summary>
+    /// 过滤边缘平滑的轮廓，去除坑坑洼洼的边缘
+    /// </summary>
+    /// <param name="contourInfos">轮廓信息列表</param>
+    /// <param name="smoothness">平滑度阈值 (0-1)，值越大要求越平滑。推荐值：0.85-0.95</param>
+    /// <returns>过滤后的轮廓信息列表</returns>
+    public static List<ContourInfo> FilterSmooth(
+        this List<ContourInfo> contourInfos,
+        double smoothness = 0.9)
+    {
+        if (contourInfos == null || contourInfos.Count == 0)
+            return [];
+
+        if (smoothness < 0 || smoothness > 1)
+            throw new ArgumentOutOfRangeException(nameof(smoothness), "平滑度阈值必须在 0-1 之间");
+
+        var result = new List<ContourInfo>();
+
+        foreach (var info in contourInfos)
+        {
+            // 使用实心度 (Solidity) 作为主要判断标准
+            // 实心度 = 轮廓面积 / 凸包面积
+            // 越接近 1 表示轮廓越平滑，越接近凸包
+            if (info.Solidity >= smoothness)
+            {
+                result.Add(info);
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// 过滤边缘平滑的轮廓（高级版本，支持多种平滑度指标）
+    /// </summary>
+    /// <param name="contourInfos">轮廓信息列表</param>
+    /// <param name="options">平滑度过滤选项</param>
+    /// <returns>过滤后的轮廓信息列表</returns>
+    public static List<ContourInfo> FilterSmooth(
+        this List<ContourInfo> contourInfos,
+        SmoothFilterOptions options)
+    {
+        if (contourInfos == null || contourInfos.Count == 0)
+            return [];
+
+        var result = new List<ContourInfo>();
+
+        foreach (var info in contourInfos)
+        {
+            bool isSmooth = true;
+
+            // 1. 实心度检查（最重要的指标）
+            if (options.UseSolidity && info.Solidity < options.MinSolidity)
+            {
+                isSmooth = false;
+            }
+
+            // 2. 圆形度检查（可选）
+            if (isSmooth && options.UseCircularity && info.Circularity < options.MinCircularity)
+            {
+                isSmooth = false;
+            }
+
+            // 3. 凸包偏差检查（可选）
+            if (isSmooth && options.UseConvexityDefect)
+            {
+                double convexityDefect = CalculateConvexityDefect(info);
+                if (convexityDefect > options.MaxConvexityDefect)
+                {
+                    isSmooth = false;
+                }
+            }
+
+            if (isSmooth)
+            {
+                result.Add(info);
+            }
+        }
+
+        return result;
+    }
+
     #region 私有方法
 
     /// <summary>
@@ -264,269 +347,29 @@ public static class ContourExtensions
         return [.. result];
     }
 
+
+    /// <summary>
+    /// 计算轮廓的凸性缺陷程度
+    /// </summary>
+    /// <param name="info">轮廓信息</param>
+    /// <returns>凸性缺陷程度 (0-1)，值越大表示边缘越不平滑</returns>
+    private static double CalculateConvexityDefect(ContourInfo info)
+    {
+        if (info.Area <= 0)
+            return 1.0;
+
+        // 计算凸包周长与轮廓周长的比值
+        double hullPerimeter = Cv2.ArcLength(info.ConvexHull, true);
+        if (hullPerimeter <= 0)
+            return 1.0;
+
+        // 周长差异比例
+        double perimeterRatio = Math.Abs(info.Perimeter - hullPerimeter) / hullPerimeter;
+
+        // 面积差异比例（已经通过 Solidity 体现）
+        // 综合评估：周长差异越大，说明边缘越不平滑
+        return Math.Min(perimeterRatio, 1.0);
+    }
+
     #endregion
-}
-
-/// <summary>
-/// 轮廓检测选项
-/// </summary>
-public class ContourOptions
-{
-    /// <summary>
-    /// 轮廓检索模式
-    /// </summary>
-    public RetrievalModes Mode { get; set; } = RetrievalModes.External;
-
-    /// <summary>
-    /// 轮廓近似方法
-    /// </summary>
-    public ContourApproximationModes Method { get; set; } = ContourApproximationModes.ApproxSimple;
-
-    /// <summary>
-    /// 高斯模糊核大小（0 表示不模糊）
-    /// </summary>
-    public int GaussianBlurSize { get; set; } = 5;
-
-    /// <summary>
-    /// 二值化类型
-    /// </summary>
-    public ContourThresholdType ThresholdType { get; set; } = ContourThresholdType.Otsu;
-
-    /// <summary>
-    /// 二值化阈值（用于 Binary/BinaryInv）
-    /// </summary>
-    public double ThresholdValue { get; set; } = 127;
-
-    /// <summary>
-    /// 自适应阈值块大小
-    /// </summary>
-    public int AdaptiveBlockSize { get; set; } = 11;
-
-    /// <summary>
-    /// 自适应阈值常数
-    /// </summary>
-    public double AdaptiveC { get; set; } = 2;
-
-    /// <summary>
-    /// Canny 边缘检测阈值1
-    /// </summary>
-    public double CannyThreshold1 { get; set; } = 50;
-
-    /// <summary>
-    /// Canny 边缘检测阈值2
-    /// </summary>
-    public double CannyThreshold2 { get; set; } = 150;
-
-    /// <summary>
-    /// 形态学操作类型（HitMiss 表示不进行形态学操作）
-    /// </summary>
-    public MorphTypes MorphologyOperation { get; set; } = MorphTypes.HitMiss;
-
-    /// <summary>
-    /// 形态学核形状
-    /// </summary>
-    public MorphShapes MorphologyShape { get; set; } = MorphShapes.Rect;
-
-    /// <summary>
-    /// 形态学核大小
-    /// </summary>
-    public int MorphologyKernelSize { get; set; } = 3;
-
-    /// <summary>
-    /// 形态学操作迭代次数
-    /// </summary>
-    public int MorphologyIterations { get; set; } = 1;
-
-    /// <summary>
-    /// 最小轮廓面积
-    /// </summary>
-    public double MinArea { get; set; } = 0;
-
-    /// <summary>
-    /// 最大轮廓面积
-    /// </summary>
-    public double MaxArea { get; set; } = double.MaxValue;
-
-    /// <summary>
-    /// 最小轮廓周长
-    /// </summary>
-    public double MinPerimeter { get; set; } = 0;
-
-    /// <summary>
-    /// 最大轮廓周长
-    /// </summary>
-    public double MaxPerimeter { get; set; } = double.MaxValue;
-}
-
-/// <summary>
-/// 轮廓二值化类型
-/// </summary>
-public enum ContourThresholdType
-{
-    /// <summary>
-    /// 固定阈值二值化
-    /// </summary>
-    Binary,
-
-    /// <summary>
-    /// 固定阈值反向二值化
-    /// </summary>
-    BinaryInv,
-
-    /// <summary>
-    /// Otsu 自动阈值
-    /// </summary>
-    Otsu,
-
-    /// <summary>
-    /// Otsu 自动阈值（反向）
-    /// </summary>
-    OtsuInv,
-
-    /// <summary>
-    /// 自适应阈值
-    /// </summary>
-    Adaptive,
-
-    /// <summary>
-    /// 自适应阈值（反向）
-    /// </summary>
-    AdaptiveInv,
-
-    /// <summary>
-    /// Canny 边缘检测
-    /// </summary>
-    Canny
-}
-
-/// <summary>
-/// 轮廓信息
-/// </summary>
-public class ContourInfo
-{
-    /// <summary>
-    /// 轮廓点
-    /// </summary>
-    public Point[] Points { get; set; } = [];
-
-    /// <summary>
-    /// 轮廓面积
-    /// </summary>
-    public double Area { get; set; }
-
-    /// <summary>
-    /// 轮廓周长
-    /// </summary>
-    public double Perimeter { get; set; }
-
-    /// <summary>
-    /// 外接矩形
-    /// </summary>
-    public Rect BoundingRect { get; set; }
-
-    /// <summary>
-    /// 最小外接旋转矩形
-    /// </summary>
-    public RotatedRect MinAreaRect { get; set; }
-
-    /// <summary>
-    /// 质心
-    /// </summary>
-    public Point2f Centroid { get; set; }
-
-    /// <summary>
-    /// 圆形度 (0-1)，1 表示完美圆形
-    /// </summary>
-    public double Circularity { get; set; }
-
-    /// <summary>
-    /// 实心度 (0-1)，轮廓面积与凸包面积的比值
-    /// </summary>
-    public double Solidity { get; set; }
-
-    /// <summary>
-    /// 凸包点
-    /// </summary>
-    public Point[] ConvexHull { get; set; } = [];
-
-    /// <summary>
-    /// 层级索引
-    /// </summary>
-    public int HierarchyIndex { get; set; }
-}
-
-/// <summary>
-/// 轮廓绘制选项
-/// </summary>
-public class ContourDrawOptions
-{
-    /// <summary>
-    /// 是否绘制轮廓
-    /// </summary>
-    public bool DrawContour { get; set; } = true;
-
-    /// <summary>
-    /// 轮廓颜色
-    /// </summary>
-    public Scalar ContourColor { get; set; } = new Scalar(0, 255, 0);
-
-    /// <summary>
-    /// 轮廓线条粗细
-    /// </summary>
-    public int ContourThickness { get; set; } = 2;
-
-    /// <summary>
-    /// 是否绘制外接矩形
-    /// </summary>
-    public bool DrawBoundingRect { get; set; } = false;
-
-    /// <summary>
-    /// 外接矩形颜色
-    /// </summary>
-    public Scalar BoundingRectColor { get; set; } = new Scalar(255, 0, 0);
-
-    /// <summary>
-    /// 外接矩形线条粗细
-    /// </summary>
-    public int BoundingRectThickness { get; set; } = 2;
-
-    /// <summary>
-    /// 是否绘制最小外接矩形
-    /// </summary>
-    public bool DrawMinAreaRect { get; set; } = false;
-
-    /// <summary>
-    /// 最小外接矩形颜色
-    /// </summary>
-    public Scalar MinAreaRectColor { get; set; } = new Scalar(0, 0, 255);
-
-    /// <summary>
-    /// 最小外接矩形线条粗细
-    /// </summary>
-    public int MinAreaRectThickness { get; set; } = 2;
-
-    /// <summary>
-    /// 是否绘制质心
-    /// </summary>
-    public bool DrawCentroid { get; set; } = false;
-
-    /// <summary>
-    /// 质心颜色
-    /// </summary>
-    public Scalar CentroidColor { get; set; } = new Scalar(0, 255, 255);
-
-    /// <summary>
-    /// 是否绘制凸包
-    /// </summary>
-    public bool DrawConvexHull { get; set; } = false;
-
-    /// <summary>
-    /// 凸包颜色
-    /// </summary>
-    public Scalar ConvexHullColor { get; set; } = new Scalar(255, 255, 0);
-
-    /// <summary>
-    /// 凸包线条粗细
-    /// </summary>
-    public int ConvexHullThickness { get; set; } = 1;
 }

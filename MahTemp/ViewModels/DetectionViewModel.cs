@@ -5,6 +5,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Extensions;
 using LyuCvExCore.Extensions;
+using LyuCvExCore.Models;
 using LyuOnnxCore.Helpers;
 using LyuOnnxCore.Models;
 using MahTemp.Enums;
