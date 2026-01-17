@@ -231,6 +231,52 @@ public partial class DetectionViewModel : ViewModelBase
 
     #endregion
 
+    #region 轮廓绘制设置
+
+    [ObservableProperty]
+    public partial bool DrawContour { get; set; } = true;
+
+    [ObservableProperty]
+    public partial Color ContourColor { get; set; } = Colors.Green;
+
+    [ObservableProperty]
+    public partial int ContourThickness { get; set; } = 2;
+
+    [ObservableProperty]
+    public partial bool DrawBoundingRect { get; set; } = false;
+
+    [ObservableProperty]
+    public partial Color BoundingRectColor { get; set; } = Colors.Blue;
+
+    [ObservableProperty]
+    public partial int BoundingRectThickness { get; set; } = 2;
+
+    [ObservableProperty]
+    public partial bool DrawMinAreaRect { get; set; } = false;
+
+    [ObservableProperty]
+    public partial Color MinAreaRectColor { get; set; } = Colors.Red;
+
+    [ObservableProperty]
+    public partial int MinAreaRectThickness { get; set; } = 2;
+
+    [ObservableProperty]
+    public partial bool DrawCentroid { get; set; } = false;
+
+    [ObservableProperty]
+    public partial Color CentroidColor { get; set; } = Colors.Yellow;
+
+    [ObservableProperty]
+    public partial bool DrawConvexHull { get; set; } = false;
+
+    [ObservableProperty]
+    public partial Color ConvexHullColor { get; set; } = Colors.Cyan;
+
+    [ObservableProperty]
+    public partial int ConvexHullThickness { get; set; } = 1;
+
+    #endregion
+
     [RelayCommand]
     private void LoadCvImage()
     {
@@ -265,9 +311,27 @@ public partial class DetectionViewModel : ViewModelBase
             MorphologyOperation = (MorphTypes)MorphologyOperation,
             MorphologyKernelSize = MorphologyKernelSize,
         };
+
+        var drawOptions = new ContourDrawOptions
+        {
+            DrawContour = DrawContour,
+            ContourColor = new Scalar(ContourColor.B, ContourColor.G, ContourColor.R),
+            ContourThickness = ContourThickness,
+            DrawBoundingRect = DrawBoundingRect,
+            BoundingRectColor = new Scalar(BoundingRectColor.B, BoundingRectColor.G, BoundingRectColor.R),
+            BoundingRectThickness = BoundingRectThickness,
+            DrawMinAreaRect = DrawMinAreaRect,
+            MinAreaRectColor = new Scalar(MinAreaRectColor.B, MinAreaRectColor.G, MinAreaRectColor.R),
+            MinAreaRectThickness = MinAreaRectThickness,
+            DrawCentroid = DrawCentroid,
+            CentroidColor = new Scalar(CentroidColor.B, CentroidColor.G, CentroidColor.R),
+            DrawConvexHull = DrawConvexHull,
+            ConvexHullColor = new Scalar(ConvexHullColor.B, ConvexHullColor.G, ConvexHullColor.R),
+            ConvexHullThickness = ConvexHullThickness,
+        };
         
         var list = pm.FindContourInfos(options);
-        CvResultImage = pm.DrawContourInfos(list).ToBitmapSource();
+        CvResultImage = pm.DrawContourInfos(list, drawOptions).ToBitmapSource();
     }
 
     private bool CanDetection() => !CvImagePath.IsNullOrWhiteSpace();
