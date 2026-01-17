@@ -200,6 +200,37 @@ public partial class DetectionViewModel : ViewModelBase
     [ObservableProperty]
     public partial BitmapSource? CvResultImage { get; set; }
 
+    #region 轮廓检测设置
+
+    [ObservableProperty]
+    public partial int ContourRetrievalMode { get; set; } = 0; // External
+
+    [ObservableProperty]
+    public partial int ContourApproximationMethod { get; set; } = 2; // ApproxSimple
+
+    [ObservableProperty]
+    public partial int GaussianBlurSize { get; set; } = 5;
+
+    [ObservableProperty]
+    public partial int ContourThresholdType { get; set; } = 2; // Otsu
+
+    [ObservableProperty]
+    public partial double ThresholdValue { get; set; } = 127;
+
+    [ObservableProperty]
+    public partial double MinArea { get; set; } = 100;
+
+    [ObservableProperty]
+    public partial double MaxArea { get; set; } = double.MaxValue;
+
+    [ObservableProperty]
+    public partial int MorphologyOperation { get; set; } = 7; // HitMiss (不进行形态学操作)
+
+    [ObservableProperty]
+    public partial int MorphologyKernelSize { get; set; } = 3;
+
+    #endregion
+
     [RelayCommand]
     private void LoadCvImage()
     {
@@ -221,14 +252,21 @@ public partial class DetectionViewModel : ViewModelBase
     private void EdgeDetection()
     {
         var pm = Cv2.ImRead(CvImagePath);
-        var list = pm.FindContourInfos(
-            new ContourOptions
-            {
-                Mode = RetrievalModes.List,
-                Method = ContourApproximationModes.ApproxNone,
-                MinArea = 2000,
-            }
-        );
+        
+        var options = new ContourOptions
+        {
+            Mode = (RetrievalModes)ContourRetrievalMode,
+            Method = (ContourApproximationModes)ContourApproximationMethod,
+            GaussianBlurSize = GaussianBlurSize,
+            ThresholdType = (ContourThresholdType)ContourThresholdType,
+            ThresholdValue = ThresholdValue,
+            MinArea = MinArea,
+            MaxArea = MaxArea,
+            MorphologyOperation = (MorphTypes)MorphologyOperation,
+            MorphologyKernelSize = MorphologyKernelSize,
+        };
+        
+        var list = pm.FindContourInfos(options);
         CvResultImage = pm.DrawContourInfos(list).ToBitmapSource();
     }
 

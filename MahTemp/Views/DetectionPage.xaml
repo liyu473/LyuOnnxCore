@@ -16,214 +16,217 @@
         <Style BasedOn="{StaticResource MahApps.Styles.Button.Flat}" TargetType="Button" />
     </UserControl.Resources>
 
-    <mah:SplitView
-        x:Name="OptionsSplitView"
-        DisplayMode="Overlay"
-        IsPaneOpen="False"
-        PanePlacement="Right">
-        <mah:SplitView.Pane>
-            <Border Background="{DynamicResource MahApps.Brushes.ThemeBackground}">
-                <Grid Margin="15">
+    <Grid>
+        <TabControl
+            d:SelectedIndex="0"
+            mah:TabControlHelper.Transition="LeftReplace"
+            mah:TabControlHelper.Underlined="TabPanel"
+            Background="Transparent"
+            Style="{StaticResource MahApps.Styles.TabControl.Animated}">
+            <TabItem Header="Onnx">
+                <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
 
                     <StackPanel Grid.Row="0" Orientation="Horizontal">
-                        <TextBlock
-                            VerticalAlignment="Center"
-                            FontSize="18"
-                            FontWeight="SemiBold"
-                            Text="检测选项" />
+                        <mah:MetroHeader Margin="10,0" Header="Onnx列表：">
+                            <ComboBox
+                                Width="120"
+                                DisplayMemberPath="Name"
+                                ItemsSource="{Binding OnnxSources}"
+                                SelectedItem="{Binding SelectedOnnxModel}" />
+                        </mah:MetroHeader>
+                        <mah:MetroHeader Margin="10,0" Header="标签列表：">
+                            <mah:MultiSelectionComboBox
+                                MinWidth="120"
+                                mah:MultiSelectorHelper.SelectedItems="{Binding SelelctedLabels}"
+                                mah:TextBoxHelper.AutoWatermark="True"
+                                mah:TextBoxHelper.UseFloatingWatermark="True"
+                                ItemsSource="{Binding LabesSource}"
+                                SelectedItemContainerStyle="{StaticResource MahApps.Styles.MultiSelectionComboBoxSelectedItem.Removable}" />
+                        </mah:MetroHeader>
+
+                        <mah:DropDownButton
+                            Margin="5,0"
+                            Padding="10,5"
+                            Content="加载标签列表">
+                            <mah:DropDownButton.ItemsSource>
+                                <x:Array Type="{x:Type MenuItem}">
+                                    <MenuItem
+                                        Command="{Binding LoadLabelsFromEnumCommand}"
+                                        Header="从枚举获取标签名称"
+                                        IsEnabled="False" />
+                                    <MenuItem Command="{Binding LoadLabesFromFileCommand}" Header="从文件获取标签列表" />
+                                </x:Array>
+                            </mah:DropDownButton.ItemsSource>
+                        </mah:DropDownButton>
                     </StackPanel>
 
-                    <ScrollViewer
+                    <mah:SplitView
+                        x:Name="OptionsSplitView"
                         Grid.Row="1"
-                        Margin="0,15,0,0"
-                        VerticalScrollBarVisibility="Auto">
-                        <StackPanel>
-                            <mah:MetroHeader Header="置信度阈值">
-                                <mah:NumericUpDown
-                                    Interval="0.01"
-                                    Maximum="1"
-                                    Minimum="0.01"
-                                    StringFormat="F2"
-                                    Value="{Binding ConfidenceThreshold}" />
-                            </mah:MetroHeader>
+                        DisplayMode="Overlay"
+                        IsPaneOpen="False"
+                        PanePlacement="Right">
+                        
+                        <mah:SplitView.Pane>
+                            <Border Background="{DynamicResource MahApps.Brushes.ThemeBackground}">
+                                <Grid Margin="15">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="*" />
+                                    </Grid.RowDefinitions>
 
-                            <mah:MetroHeader Margin="0,10,0,0" Header="NMS阈值">
-                                <mah:NumericUpDown
-                                    Interval="0.01"
-                                    Maximum="1"
-                                    Minimum="0.01"
-                                    StringFormat="F2"
-                                    Value="{Binding NmsThreshold}" />
-                            </mah:MetroHeader>
+                                    <StackPanel Grid.Row="0" Orientation="Horizontal">
+                                        <TextBlock
+                                            VerticalAlignment="Center"
+                                            FontSize="18"
+                                            FontWeight="SemiBold"
+                                            Text="检测选项" />
+                                    </StackPanel>
 
-                            <TextBlock
-                                Margin="0,5,0,0"
-                                Foreground="Gray"
-                                TextWrapping="Wrap">
-                                控制重复检测框的过滤强度。值越小过滤越严格，值越大保留框越多。
-                            </TextBlock>
+                                    <ScrollViewer
+                                        Grid.Row="1"
+                                        Margin="0,15,0,0"
+                                        VerticalScrollBarVisibility="Auto">
+                                        <StackPanel>
+                                            <mah:MetroHeader Header="置信度阈值">
+                                                <mah:NumericUpDown
+                                                    Interval="0.01"
+                                                    Maximum="1"
+                                                    Minimum="0.01"
+                                                    StringFormat="F2"
+                                                    Value="{Binding ConfidenceThreshold}" />
+                                            </mah:MetroHeader>
 
-                            <mah:MetroHeader Margin="0,10,0,0" Header="边框粗细">
-                                <mah:NumericUpDown
-                                    Interval="1"
-                                    Maximum="10"
-                                    Minimum="1"
-                                    Value="{Binding BoxThickness}" />
-                            </mah:MetroHeader>
+                                            <mah:MetroHeader Margin="0,10,0,0" Header="NMS阈值">
+                                                <mah:NumericUpDown
+                                                    Interval="0.01"
+                                                    Maximum="1"
+                                                    Minimum="0.01"
+                                                    StringFormat="F2"
+                                                    Value="{Binding NmsThreshold}" />
+                                            </mah:MetroHeader>
 
-                            <mah:MetroHeader Margin="0,10,0,0" Header="字体大小">
-                                <mah:NumericUpDown
-                                    Interval="0.1"
-                                    Maximum="3"
-                                    Minimum="0.3"
-                                    StringFormat="F1"
-                                    Value="{Binding FontScale}" />
-                            </mah:MetroHeader>
+                                            <TextBlock
+                                                Margin="0,5,0,0"
+                                                Foreground="Gray"
+                                                TextWrapping="Wrap">
+                                                控制重复检测框的过滤强度。值越小过滤越严格，值越大保留框越多。
+                                            </TextBlock>
 
-                            <mah:ToggleSwitch
-                                Margin="0,15,0,0"
-                                Content="显示标签"
-                                IsOn="{Binding ShowLabel}" />
+                                            <mah:MetroHeader Margin="0,10,0,0" Header="边框粗细">
+                                                <mah:NumericUpDown
+                                                    Interval="1"
+                                                    Maximum="10"
+                                                    Minimum="1"
+                                                    Value="{Binding BoxThickness}" />
+                                            </mah:MetroHeader>
 
-                            <mah:ToggleSwitch
-                                Margin="0,10,0,0"
-                                Content="显示置信度"
-                                IsOn="{Binding ShowConfidence}" />
+                                            <mah:MetroHeader Margin="0,10,0,0" Header="字体大小">
+                                                <mah:NumericUpDown
+                                                    Interval="0.1"
+                                                    Maximum="3"
+                                                    Minimum="0.3"
+                                                    StringFormat="F1"
+                                                    Value="{Binding FontScale}" />
+                                            </mah:MetroHeader>
 
-                            <mah:MetroHeader Margin="0,15,0,0" Header="边框颜色">
-                                <mah:ColorPicker SelectedColor="{Binding BoxColor}" />
-                            </mah:MetroHeader>
+                                            <mah:ToggleSwitch
+                                                Margin="0,15,0,0"
+                                                Content="显示标签"
+                                                IsOn="{Binding ShowLabel}" />
 
-                            <mah:MetroHeader Margin="0,10,0,0" Header="文字颜色">
-                                <mah:ColorPicker SelectedColor="{Binding TextColor}" />
-                            </mah:MetroHeader>
+                                            <mah:ToggleSwitch
+                                                Margin="0,10,0,0"
+                                                Content="显示置信度"
+                                                IsOn="{Binding ShowConfidence}" />
 
-                            <Separator Margin="0,15,0,10" />
+                                            <mah:MetroHeader Margin="0,15,0,0" Header="边框颜色">
+                                                <mah:ColorPicker SelectedColor="{Binding BoxColor}" />
+                                            </mah:MetroHeader>
 
-                            <TextBlock
-                                FontSize="14"
-                                FontWeight="SemiBold"
-                                Text="重合框过滤设置" />
+                                            <mah:MetroHeader Margin="0,10,0,0" Header="文字颜色">
+                                                <mah:ColorPicker SelectedColor="{Binding TextColor}" />
+                                            </mah:MetroHeader>
 
-                            <mah:ToggleSwitch
-                                Margin="0,10,0,0"
-                                Content="启用重合框过滤"
-                                IsOn="{Binding IsFilterOverlay}" />
+                                            <Separator Margin="0,15,0,10" />
 
-                            <TextBlock
-                                Margin="0,5,0,0"
-                                Foreground="Gray"
-                                TextWrapping="Wrap">
-                                过滤被其他检测框包含的小框，避免重复检测
-                            </TextBlock>
+                                            <TextBlock
+                                                FontSize="14"
+                                                FontWeight="SemiBold"
+                                                Text="重合框过滤设置" />
 
-                            <mah:ToggleSwitch
-                                Margin="0,10,0,0"
-                                Content="跨类别过滤"
-                                IsEnabled="{Binding IsFilterOverlay}"
-                                IsOn="{Binding IsCrossClass}" />
+                                            <mah:ToggleSwitch
+                                                Margin="0,10,0,0"
+                                                Content="启用重合框过滤"
+                                                IsOn="{Binding IsFilterOverlay}" />
 
-                            <TextBlock
-                                Margin="0,5,0,0"
-                                Foreground="Gray"
-                                TextWrapping="Wrap">
-                                开启后会过滤不同类别之间的重合框，关闭则只过滤同类别的重合框
-                            </TextBlock>
+                                            <TextBlock
+                                                Margin="0,5,0,0"
+                                                Foreground="Gray"
+                                                TextWrapping="Wrap">
+                                                过滤被其他检测框包含的小框，避免重复检测
+                                            </TextBlock>
 
-                            <mah:MetroHeader
-                                Margin="0,10,0,0"
-                                Header="过滤程度"
-                                IsEnabled="{Binding IsFilterOverlay}">
-                                <mah:NumericUpDown
-                                    Interval="0.05"
-                                    Maximum="1"
-                                    Minimum="0.1"
-                                    StringFormat="F2"
-                                    Value="{Binding OverlayThreshold}" />
-                            </mah:MetroHeader>
+                                            <mah:ToggleSwitch
+                                                Margin="0,10,0,0"
+                                                Content="跨类别过滤"
+                                                IsEnabled="{Binding IsFilterOverlay}"
+                                                IsOn="{Binding IsCrossClass}" />
 
-                            <TextBlock
-                                Margin="0,5,0,0"
-                                Foreground="Gray"
-                                TextWrapping="Wrap">
-                                控制过滤的严格程度 (0.1-1.0)
-                            </TextBlock>
+                                            <TextBlock
+                                                Margin="0,5,0,0"
+                                                Foreground="Gray"
+                                                TextWrapping="Wrap">
+                                                开启后会过滤不同类别之间的重合框，关闭则只过滤同类别的重合框
+                                            </TextBlock>
 
-                            <Border
-                                Margin="0,5,0,0"
-                                Background="#FFF9F3"
-                                BorderBrush="#FFE0C0"
-                                BorderThickness="1"
-                                CornerRadius="4"
-                                Padding="8">
-                                <TextBlock FontSize="11" TextWrapping="Wrap">
-                                    <Run FontWeight="SemiBold" Text="💡 说明：" />
-                                    <LineBreak />
-                                    <Run Text="• 0.6-0.7: 宽松模式，过滤部分重合的框" />
-                                    <LineBreak />
-                                    <Run Text="• 0.8: 平衡模式（推荐）" />
-                                    <LineBreak />
-                                    <Run Text="• 0.9: 严格模式，只过滤几乎完全包含的框" />
-                                </TextBlock>
+                                            <mah:MetroHeader
+                                                Margin="0,10,0,0"
+                                                Header="过滤程度"
+                                                IsEnabled="{Binding IsFilterOverlay}">
+                                                <mah:NumericUpDown
+                                                    Interval="0.05"
+                                                    Maximum="1"
+                                                    Minimum="0.1"
+                                                    StringFormat="F2"
+                                                    Value="{Binding OverlayThreshold}" />
+                                            </mah:MetroHeader>
+
+                                            <TextBlock
+                                                Margin="0,5,0,0"
+                                                Foreground="Gray"
+                                                TextWrapping="Wrap">
+                                                控制过滤的严格程度 (0.1-1.0)
+                                            </TextBlock>
+
+                                            <Border
+                                                Margin="0,5,0,0"
+                                                Background="#FFF9F3"
+                                                BorderBrush="#FFE0C0"
+                                                BorderThickness="1"
+                                                CornerRadius="4"
+                                                Padding="8">
+                                                <TextBlock FontSize="11" TextWrapping="Wrap">
+                                                    <Run FontWeight="SemiBold" Text="💡 说明：" />
+                                                    <LineBreak />
+                                                    <Run Text="• 0.6-0.7: 宽松模式，过滤部分重合的框" />
+                                                    <LineBreak />
+                                                    <Run Text="• 0.8: 平衡模式（推荐）" />
+                                                    <LineBreak />
+                                                    <Run Text="• 0.9: 严格模式，只过滤几乎完全包含的框" />
+                                                </TextBlock>
+                                            </Border>
+                                        </StackPanel>
+                                    </ScrollViewer>
+                                </Grid>
                             </Border>
-                        </StackPanel>
-                    </ScrollViewer>
-                </Grid>
-            </Border>
-        </mah:SplitView.Pane>
+                        </mah:SplitView.Pane>
 
-        <Grid>
-            <TabControl
-                d:SelectedIndex="1"
-                mah:TabControlHelper.Transition="LeftReplace"
-                mah:TabControlHelper.Underlined="TabPanel"
-                Background="Transparent"
-                Style="{StaticResource MahApps.Styles.TabControl.Animated}">
-                <TabItem Header="Onnx">
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="*" />
-                        </Grid.RowDefinitions>
-                        <StackPanel Grid.Row="0" Orientation="Horizontal">
-                            <mah:MetroHeader Margin="10,0" Header="Onnx列表：">
-                                <ComboBox
-                                    Width="120"
-                                    DisplayMemberPath="Name"
-                                    ItemsSource="{Binding OnnxSources}"
-                                    SelectedItem="{Binding SelectedOnnxModel}" />
-                            </mah:MetroHeader>
-                            <mah:MetroHeader Margin="10,0" Header="标签列表：">
-                                <mah:MultiSelectionComboBox
-                                    MinWidth="120"
-                                    mah:MultiSelectorHelper.SelectedItems="{Binding SelelctedLabels}"
-                                    mah:TextBoxHelper.AutoWatermark="True"
-                                    mah:TextBoxHelper.UseFloatingWatermark="True"
-                                    ItemsSource="{Binding LabesSource}"
-                                    SelectedItemContainerStyle="{StaticResource MahApps.Styles.MultiSelectionComboBoxSelectedItem.Removable}" />
-                            </mah:MetroHeader>
-
-                            <mah:DropDownButton
-                                Margin="5,0"
-                                Padding="10,5"
-                                Content="加载标签列表">
-                                <mah:DropDownButton.ItemsSource>
-                                    <x:Array Type="{x:Type MenuItem}">
-                                        <MenuItem
-                                            Command="{Binding LoadLabelsFromEnumCommand}"
-                                            Header="从枚举获取标签名称"
-                                            IsEnabled="False" />
-                                        <MenuItem Command="{Binding LoadLabesFromFileCommand}" Header="从文件获取标签列表" />
-                                    </x:Array>
-                                </mah:DropDownButton.ItemsSource>
-                            </mah:DropDownButton>
-                        </StackPanel>
-
-                        <Grid Grid.Row="1" Margin="0,12">
+                        <Grid Margin="0,12">
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="*" />
@@ -275,61 +278,244 @@
                                 <Image Source="{Binding ResultImage}" Stretch="Uniform" />
                             </Border>
                         </Grid>
-                    </Grid>
-                </TabItem>
+                    </mah:SplitView>
+                </Grid>
+            </TabItem>
 
-                <TabItem Header="OpenCv">
-                    <Grid Margin="10">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="*" />
-                        </Grid.RowDefinitions>
+            <TabItem Header="OpenCv">
+                <Grid Margin="10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
 
-                        <StackPanel Grid.Row="0" Orientation="Horizontal">
-                            <Button Command="{Binding LoadCvImageCommand}" Content="导入图片" />
-                            <TextBlock
-                                Margin="20,0"
-                                VerticalAlignment="Center"
-                                Foreground="{StaticResource MahApps.Brushes.Accent2}"
-                                Style="{StaticResource MahApps.Styles.TextBlock}"
-                                Text="{Binding CvImagePath}" />
-                        </StackPanel>
+                    <StackPanel Grid.Row="0" Orientation="Horizontal">
+                        <Button Command="{Binding LoadCvImageCommand}" Content="导入图片" />
+                        <Button
+                            Margin="10,0"
+                            Command="{Binding EdgeDetectionCommand}"
+                            Content="检测轮廓" />
+                        <Button Margin="0,0,10,0" Content="轮廓选项">
+                            <i:Interaction.Triggers>
+                                <i:EventTrigger EventName="Click">
+                                    <i:ChangePropertyAction
+                                        PropertyName="IsPaneOpen"
+                                        TargetObject="{Binding ElementName=CvOptionsSplitView}"
+                                        Value="True" />
+                                </i:EventTrigger>
+                            </i:Interaction.Triggers>
+                        </Button>
+                        <TextBlock
+                            Margin="10,0"
+                            VerticalAlignment="Center"
+                            Foreground="{StaticResource MahApps.Brushes.Accent2}"
+                            Style="{StaticResource MahApps.Styles.TextBlock}"
+                            Text="{Binding CvImagePath}" />
+                    </StackPanel>
 
-                        <Grid Grid.Row="1" Margin="0,8">
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="*" />
-                            </Grid.RowDefinitions>
-                            <StackPanel Grid.Row="0" Orientation="Horizontal">
-                                <Button Command="{Binding EdgeDetectionCommand}" Content="检测边缘" />
-                            </StackPanel>
-                            <Grid Grid.Row="1">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
+                    <mah:SplitView
+                        x:Name="CvOptionsSplitView"
+                        Grid.Row="1"
+                        DisplayMode="Overlay"
+                        IsPaneOpen="False"
+                        PanePlacement="Right">
+                        <mah:SplitView.Pane>
+                            <Border Background="{DynamicResource MahApps.Brushes.ThemeBackground}">
+                                <Grid Margin="15">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="*" />
+                                    </Grid.RowDefinitions>
 
-                                <Border
-                                    Grid.Column="0"
-                                    Margin="0,8,4,0"
-                                    BorderBrush="{StaticResource MahApps.Brushes.Accent}"
-                                    BorderThickness="0.5">
-                                    <Image Source="{Binding CvOriginalImage}" Stretch="Uniform" />
-                                </Border>
+                                    <StackPanel Grid.Row="0" Orientation="Horizontal">
+                                        <TextBlock
+                                            VerticalAlignment="Center"
+                                            FontSize="18"
+                                            FontWeight="SemiBold"
+                                            Text="轮廓检测选项" />
+                                    </StackPanel>
 
-                                <Border
-                                    Grid.Column="1"
-                                    Margin="0,8,4,0"
-                                    BorderBrush="{StaticResource MahApps.Brushes.Accent}"
-                                    BorderThickness="0.5">
-                                    <Image Source="{Binding CvResultImage}" Stretch="Uniform" />
-                                </Border>
+                                    <ScrollViewer
+                                        Grid.Row="1"
+                                        Margin="0,15,0,0"
+                                        VerticalScrollBarVisibility="Auto">
+                                        <StackPanel>
+                                            <mah:MetroHeader Header="轮廓检索模式">
+                                                <ComboBox SelectedIndex="{Binding ContourRetrievalMode}">
+                                                    <ComboBoxItem Content="External - 只检测外轮廓" />
+                                                    <ComboBoxItem Content="List - 检测所有轮廓（无层级）" />
+                                                    <ComboBoxItem Content="CComp - 两层结构" />
+                                                    <ComboBoxItem Content="Tree - 完整层级树" />
+                                                </ComboBox>
+                                            </mah:MetroHeader>
 
-                            </Grid>
+                                            <mah:MetroHeader Margin="0,10,0,0" Header="轮廓近似方法">
+                                                <ComboBox SelectedIndex="{Binding ContourApproximationMethod}">
+                                                    <ComboBoxItem Content="None - 保存所有点" />
+                                                    <ComboBoxItem Content="Simple - 压缩直线段（推荐）" />
+                                                    <ComboBoxItem Content="TC89_L1 - Teh-Chin算法" />
+                                                    <ComboBoxItem Content="TC89_KCOS - Teh-Chin算法" />
+                                                </ComboBox>
+                                            </mah:MetroHeader>
+
+                                            <TextBlock
+                                                Margin="0,5,0,0"
+                                                Foreground="Gray"
+                                                TextWrapping="Wrap">
+                                                Simple模式适合大多数场景，可减少内存占用
+                                            </TextBlock>
+
+                                            <Separator Margin="0,15,0,10" />
+
+                                            <TextBlock
+                                                FontSize="14"
+                                                FontWeight="SemiBold"
+                                                Text="预处理设置" />
+
+                                            <mah:MetroHeader Margin="0,10,0,0" Header="高斯模糊核大小">
+                                                <mah:NumericUpDown
+                                                    Interval="2"
+                                                    Maximum="31"
+                                                    Minimum="0"
+                                                    Value="{Binding GaussianBlurSize}" />
+                                            </mah:MetroHeader>
+
+                                            <TextBlock
+                                                Margin="0,5,0,0"
+                                                Foreground="Gray"
+                                                TextWrapping="Wrap">
+                                                0表示不模糊，必须为奇数
+                                            </TextBlock>
+
+                                            <mah:MetroHeader Margin="0,10,0,0" Header="二值化类型">
+                                                <ComboBox SelectedIndex="{Binding ContourThresholdType}">
+                                                    <ComboBoxItem Content="Binary - 固定阈值" />
+                                                    <ComboBoxItem Content="BinaryInv - 固定阈值反向" />
+                                                    <ComboBoxItem Content="Otsu - 自动阈值（推荐）" />
+                                                    <ComboBoxItem Content="OtsuInv - 自动阈值反向" />
+                                                    <ComboBoxItem Content="Adaptive - 自适应阈值" />
+                                                    <ComboBoxItem Content="AdaptiveInv - 自适应反向" />
+                                                    <ComboBoxItem Content="Canny - 边缘检测" />
+                                                </ComboBox>
+                                            </mah:MetroHeader>
+
+                                            <mah:MetroHeader Margin="0,10,0,0" Header="二值化阈值">
+                                                <mah:NumericUpDown
+                                                    Interval="1"
+                                                    Maximum="255"
+                                                    Minimum="0"
+                                                    Value="{Binding ThresholdValue}" />
+                                            </mah:MetroHeader>
+
+                                            <TextBlock
+                                                Margin="0,5,0,0"
+                                                Foreground="Gray"
+                                                TextWrapping="Wrap">
+                                                仅用于Binary/BinaryInv模式
+                                            </TextBlock>
+
+                                            <Separator Margin="0,15,0,10" />
+
+                                            <TextBlock
+                                                FontSize="14"
+                                                FontWeight="SemiBold"
+                                                Text="轮廓过滤" />
+
+                                            <mah:MetroHeader Margin="0,10,0,0" Header="最小面积">
+                                                <mah:NumericUpDown
+                                                    Interval="10"
+                                                    Maximum="100000"
+                                                    Minimum="0"
+                                                    Value="{Binding MinArea}" />
+                                            </mah:MetroHeader>
+
+                                            <mah:MetroHeader Margin="0,10,0,0" Header="最大面积">
+                                                <mah:NumericUpDown
+                                                    Interval="1000"
+                                                    Maximum="10000000"
+                                                    Minimum="0"
+                                                    StringFormat="N0"
+                                                    Value="{Binding MaxArea}" />
+                                            </mah:MetroHeader>
+
+                                            <Separator Margin="0,15,0,10" />
+
+                                            <TextBlock
+                                                FontSize="14"
+                                                FontWeight="SemiBold"
+                                                Text="形态学操作" />
+
+                                            <mah:MetroHeader Margin="0,10,0,0" Header="操作类型">
+                                                <ComboBox SelectedIndex="{Binding MorphologyOperation}">
+                                                    <ComboBoxItem Content="Erode - 腐蚀" />
+                                                    <ComboBoxItem Content="Dilate - 膨胀" />
+                                                    <ComboBoxItem Content="Open - 开运算" />
+                                                    <ComboBoxItem Content="Close - 闭运算" />
+                                                    <ComboBoxItem Content="Gradient - 形态学梯度" />
+                                                    <ComboBoxItem Content="TopHat - 顶帽" />
+                                                    <ComboBoxItem Content="BlackHat - 黑帽" />
+                                                    <ComboBoxItem Content="None - 不进行操作（推荐）" />
+                                                </ComboBox>
+                                            </mah:MetroHeader>
+
+                                            <mah:MetroHeader Margin="0,10,0,0" Header="核大小">
+                                                <mah:NumericUpDown
+                                                    Interval="2"
+                                                    Maximum="21"
+                                                    Minimum="3"
+                                                    Value="{Binding MorphologyKernelSize}" />
+                                            </mah:MetroHeader>
+
+                                            <Border
+                                                Margin="0,10,0,0"
+                                                Background="#F0F8FF"
+                                                BorderBrush="#B0D4FF"
+                                                BorderThickness="1"
+                                                CornerRadius="4"
+                                                Padding="8">
+                                                <TextBlock FontSize="11" TextWrapping="Wrap">
+                                                    <Run FontWeight="SemiBold" Text="💡 提示：" />
+                                                    <LineBreak />
+                                                    <Run Text="• 腐蚀：去除小噪点" />
+                                                    <LineBreak />
+                                                    <Run Text="• 膨胀：填充小孔洞" />
+                                                    <LineBreak />
+                                                    <Run Text="• 开运算：先腐蚀后膨胀，去噪" />
+                                                    <LineBreak />
+                                                    <Run Text="• 闭运算：先膨胀后腐蚀，填孔" />
+                                                </TextBlock>
+                                            </Border>
+                                        </StackPanel>
+                                    </ScrollViewer>
+                                </Grid>
+                            </Border>
+                        </mah:SplitView.Pane>
+
+                        <Grid Margin="0,8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+
+                            <Border
+                                Grid.Column="0"
+                                Margin="0,0,4,0"
+                                BorderBrush="{StaticResource MahApps.Brushes.Accent}"
+                                BorderThickness="0.5">
+                                <Image Source="{Binding CvOriginalImage}" Stretch="Uniform" />
+                            </Border>
+
+                            <Border
+                                Grid.Column="1"
+                                Margin="4,0,0,0"
+                                BorderBrush="{StaticResource MahApps.Brushes.Accent}"
+                                BorderThickness="0.5">
+                                <Image Source="{Binding CvResultImage}" Stretch="Uniform" />
+                            </Border>
                         </Grid>
-                    </Grid>
-                </TabItem>
-            </TabControl>
-        </Grid>
-    </mah:SplitView>
+                    </mah:SplitView>
+                </Grid>
+            </TabItem>
+        </TabControl>
+    </Grid>
 </UserControl>
