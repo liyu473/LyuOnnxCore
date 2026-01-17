@@ -28,7 +28,7 @@ public static class OnnxCvExtensions
             Height = mat.Height,
             Channels = mat.Channels(),
             Data = data,
-            IsBgr = true
+            IsBgr = true,
         };
     }
 
@@ -39,9 +39,19 @@ public static class OnnxCvExtensions
         this InferenceSession session,
         Mat image,
         string[] labels,
-        DetectionOptions? options = null)
+        DetectionOptions? options = null
+    )
     {
-        return session.Detect(image.ToImageData(), labels, options);
+        options ??= new DetectionOptions();
+        var results = session.Detect(image.ToImageData(), labels, options);
+
+        // 根据配置决定是否过滤重合框
+        if (options.IsFilterOverlay)
+        {
+            results = results.FilterContained(options.OverlayThreshold, options.IsCrossClass);
+        }
+
+        return results;
     }
 
     /// <summary>
@@ -52,7 +62,8 @@ public static class OnnxCvExtensions
         Mat image,
         string[] labels,
         DetectionOptions? detectionOptions = null,
-        DrawOptions? drawOptions = null)
+        DrawOptions? drawOptions = null
+    )
     {
         var results = session.Detect(image, labels, detectionOptions);
         return image.DrawDetections(results, drawOptions);
@@ -61,7 +72,11 @@ public static class OnnxCvExtensions
     /// <summary>
     /// 在图像上绘制检测结果（支持中文标签）
     /// </summary>
-    public static Mat DrawDetections(this Mat image, List<DetectionResult> detections, DrawOptions? options = null)
+    public static Mat DrawDetections(
+        this Mat image,
+        List<DetectionResult> detections,
+        DrawOptions? options = null
+    )
     {
         options ??= new DrawOptions();
         var result = image.Clone();
@@ -70,12 +85,17 @@ public static class OnnxCvExtensions
         {
             var box = detection.BoundingBox;
             var color = new Scalar(options.BoxColor.B, options.BoxColor.G, options.BoxColor.R);
-            Cv2.Rectangle(result, new Rect(box.X, box.Y, box.Width, box.Height), color, options.BoxThickness);
+            Cv2.Rectangle(
+                result,
+                new Rect(box.X, box.Y, box.Width, box.Height),
+                color,
+                options.BoxThickness
+            );
         }
 
         using var bitmap = BitmapConverter.ToBitmap(result);
         using var graphics = Graphics.FromImage(bitmap);
-        
+
         // 设置文字渲染质量
         graphics.SmoothingMode = SmoothingMode.AntiAlias;
         graphics.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
@@ -83,7 +103,9 @@ public static class OnnxCvExtensions
         // 计算字体大小（基于 FontScale）
         float fontSize = (float)(12 * options.FontScale / 0.5);
         using var font = new Font("Microsoft YaHei", fontSize, FontStyle.Bold);
-        using var textBrush = new SolidBrush(Color.FromArgb(options.TextColor.R, options.TextColor.G, options.TextColor.B));
+        using var textBrush = new SolidBrush(
+            Color.FromArgb(options.TextColor.R, options.TextColor.G, options.TextColor.B)
+        );
         using var bgBrush = new SolidBrush(Color.FromArgb(0, 0, 0, 0)); // 半透明黑色背景
 
         foreach (var detection in detections)
@@ -100,14 +122,15 @@ public static class OnnxCvExtensions
             {
                 // 测量文字大小
                 var textSize = graphics.MeasureString(label, font);
-                
+
                 int textX = box.X;
                 int textY = box.Y - (int)textSize.Height - 2;
-                if (textY < 0) textY = box.Y + 2;
+                if (textY < 0)
+                    textY = box.Y + 2;
 
                 // 绘制文字背景
                 graphics.FillRectangle(bgBrush, textX, textY, textSize.Width, textSize.Height);
-                
+
                 // 绘制文字
                 graphics.DrawString(label, font, textBrush, textX, textY);
             }

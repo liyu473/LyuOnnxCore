@@ -20,9 +20,11 @@ public partial class DetectionViewModel : ViewModelBase
     {
         OnnxModelHelper.GetOnnxModels("OnnxModel").ForEach(o => OnnxSources.Add(o));
         SelectedOnnxModel = OnnxSources.FirstOrDefault();
-        LoadLabelsFromEnum();
+        //LoadLabelsFromEnum();
         SelelctedLabels.CollectionChanged += SelelctedLabels_CollectionChanged;
     }
+
+    #region Onnx
 
     public ObservableCollection<OnnxModelInfo> OnnxSources { get; } = [];
 
@@ -60,18 +62,29 @@ public partial class DetectionViewModel : ViewModelBase
     [ObservableProperty]
     public partial Color TextColor { get; set; } = Colors.Yellow;
 
+    [ObservableProperty]
+    public partial bool IsFilterOverlay { get; set; } = true;
+
+    [ObservableProperty]
+    public partial bool IsCrossClass { get; set; } = true;
+
+    [ObservableProperty]
+    public partial double OverlayThreshold { get; set; } = 0.8;
+
     #endregion
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(OriginalImage))]
     [NotifyCanExecuteChangedFor(nameof(StartDetectionCommand))]
     public partial string? ImagePath { get; set; }
+
     partial void OnImagePathChanged(string? value)
     {
         ResultImage = null;
     }
 
-    public  BitmapImage? OriginalImage => ImagePath.IsNullOrWhiteSpace() ? null :  new (new Uri(ImagePath));
+    public BitmapImage? OriginalImage =>
+        ImagePath.IsNullOrWhiteSpace() ? null : new(new Uri(ImagePath));
 
     [ObservableProperty]
     public partial BitmapSource? ResultImage { get; set; }
@@ -116,12 +129,13 @@ public partial class DetectionViewModel : ViewModelBase
         var dialog = new Microsoft.Win32.OpenFileDialog
         {
             Title = "选择图片",
-            Filter = "图片文件 (*.jpg;*.jpeg;*.png;*.bmp)|*.jpg;*.jpeg;*.png;*.bmp|所有文件 (*.*)|*.*",
+            Filter =
+                "图片文件 (*.jpg;*.jpeg;*.png;*.bmp)|*.jpg;*.jpeg;*.png;*.bmp|所有文件 (*.*)|*.*",
         };
 
         if (dialog.ShowDialog() == true)
         {
-            ImagePath = dialog.FileName;           
+            ImagePath = dialog.FileName;
             ResultImage = null;
         }
     }
@@ -136,7 +150,10 @@ public partial class DetectionViewModel : ViewModelBase
         {
             ConfidenceThreshold = (float)ConfidenceThreshold,
             NmsThreshold = (float)NmsThreshold,
-            FilterLabels = [.. SelelctedLabels]
+            FilterLabels = [.. SelelctedLabels],
+            IsFilterOverlay = IsFilterOverlay,
+            IsCrossClass = IsCrossClass,
+            OverlayThreshold = (float)OverlayThreshold,
         };
 
         var drawOptions = new DrawOptions
@@ -146,12 +163,76 @@ public partial class DetectionViewModel : ViewModelBase
             BoxThickness = BoxThickness,
             FontScale = FontScale,
             BoxColor = (BoxColor.B, BoxColor.G, BoxColor.R),
-            TextColor = (TextColor.B, TextColor.G, TextColor.R)
+            TextColor = (TextColor.B, TextColor.G, TextColor.R),
         };
 
-        var resultMat = session.DetectAndDraw(image, [.. LabesSource], detectionOptions, drawOptions);
+        var resultMat = session.DetectAndDraw(
+            image,
+            [.. LabesSource],
+            detectionOptions,
+            drawOptions
+        );
         ResultImage = resultMat.ToBitmapSource();
     }
 
-    private bool CanStartDetection() => !ImagePath.IsNullOrWhiteSpace() && SelectedOnnxModel is not null && SelelctedLabels.Count > 0 ;
+    private bool CanStartDetection() =>
+        !ImagePath.IsNullOrWhiteSpace()
+        && SelectedOnnxModel is not null
+        && SelelctedLabels.Count > 0;
+
+    #endregion
+
+    #region Cv
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CvOriginalImage))]
+    [NotifyCanExecuteChangedFor(nameof(EdgeDetectionCommand))]
+    public partial string CvImagePath { get; set; } = string.Empty;
+
+    partial void OnCvImagePathChanged(string value)
+    {
+        CvResultImage = null;
+    }
+
+    public BitmapImage? CvOriginalImage =>
+        CvImagePath.IsNullOrWhiteSpace() ? null : new(new Uri(CvImagePath));
+
+    [ObservableProperty]
+    public partial BitmapSource? CvResultImage { get; set; }
+
+    [RelayCommand]
+    private void LoadCvImage()
+    {
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "选择图片",
+            Filter =
+                "图片文件 (*.jpg;*.jpeg;*.png;*.bmp)|*.jpg;*.jpeg;*.png;*.bmp|所有文件 (*.*)|*.*",
+        };
+
+        if (dialog.ShowDialog() == true)
+        {
+            CvImagePath = dialog.FileName;
+            CvResultImage = null;
+        }
+    }
+
+    [RelayCommand(CanExecute = (nameof(CanDetection)))]
+    private void EdgeDetection()
+    {
+        var pm = Cv2.ImRead(CvImagePath);
+        var list = pm.FindContourInfos(
+            new ContourOptions
+            {
+                Mode = RetrievalModes.List,
+                Method = ContourApproximationModes.ApproxNone,
+                MinArea = 2000,
+            }
+        );
+        CvResultImage = pm.DrawContourInfos(list).ToBitmapSource();
+    }
+
+    private bool CanDetection() => !CvImagePath.IsNullOrWhiteSpace();
+
+    #endregion
 }

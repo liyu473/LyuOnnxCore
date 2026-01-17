@@ -12,7 +12,6 @@ public class LabelToViewConverter : IValueConverter
 
         return label switch
         {
-            "Home" => App.GetService<Views.HomePage>(),
             "Settings" => App.GetService<Views.SettingsPage>(),
             "Detection" => App.GetService<Views.DetectionPage>(),
             _ => null

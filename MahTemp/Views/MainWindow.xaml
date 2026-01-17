@@ -161,7 +161,6 @@
                 <mah:HamburgerMenuItemCollection>
                     <mah:HamburgerMenuHeaderItem Label="目录" />
                     <mah:HamburgerMenuSeparatorItem />
-                    <mah:HamburgerMenuIconItem Icon="{iconPacks:Material Kind=Home}" Label="Home" />
                     <mah:HamburgerMenuIconItem Icon="{iconPacks:Material Kind=ImageSearch}" Label="Detection" />
                 </mah:HamburgerMenuItemCollection>
             </mah:HamburgerMenu.ItemsSource>

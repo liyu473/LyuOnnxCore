@@ -12,5 +12,5 @@ public partial class MainViewModel : ViewModelBase
         Assembly.GetExecutingAssembly().GetName().Version?.ToString() ?? string.Empty;
 
     [ObservableProperty]
-    public partial object View { get; set; } = App.GetService<HomePage>();
+    public partial object View { get; set; } = App.GetService<DetectionPage>();
 }
