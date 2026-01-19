@@ -136,65 +136,83 @@ public partial class DetectionViewModel : ViewModelBase
     [ObservableProperty]
     private bool isObbModel;
 
+    [ObservableProperty]
+    private bool isDetecting;
+
     [RelayCommand(CanExecute = nameof(CanStartDetection))]
-    private void StartDetection()
+    private async Task StartDetection()
     {
+        IsDetecting = true;
         try
         {
-            using var session = new InferenceSession(SelectedOnnxModel!.FullPath);
-            using var image = Cv2.ImRead(ImagePath!);
+            await Task.Run(() =>
+            {
+                using var session = new InferenceSession(SelectedOnnxModel!.FullPath);
+                using var image = Cv2.ImRead(ImagePath!);
 
-            if (image.Empty())
-            {
-                System.Windows.MessageBox.Show("图像加载失败", "错误");
-                return;
-            }
+                if (image.Empty())
+                {
+                    System.Windows.Application.Current.Dispatcher.Invoke(() =>
+                    {
+                        System.Windows.MessageBox.Show("图像加载失败", "错误");
+                    });
+                    return;
+                }
 
-            var detectionOptions = new DetectionOptions
-            {
-                ConfidenceThreshold = (float)ConfidenceThreshold,
-                NmsThreshold = (float)NmsThreshold,
-                FilterLabels = [.. SelelctedLabels],
-                IsFilterOverlay = IsFilterOverlay,
-                IsCrossClass = IsCrossClass,
-                OverlayThreshold = (float)OverlayThreshold,
-            };
+                var detectionOptions = new DetectionOptions
+                {
+                    ConfidenceThreshold = (float)ConfidenceThreshold,
+                    NmsThreshold = (float)NmsThreshold,
+                    FilterLabels = [.. SelelctedLabels],
+                    IsFilterOverlay = IsFilterOverlay,
+                    IsCrossClass = IsCrossClass,
+                    OverlayThreshold = (float)OverlayThreshold,
+                };
 
-            var drawOptions = new DrawOptions
-            {
-                ShowConfidence = ShowConfidence,
-                ShowLabel = ShowLabel,
-                BoxThickness = BoxThickness,
-                FontScale = FontScale,
-                BoxColor = (BoxColor.B, BoxColor.G, BoxColor.R),
-                TextColor = (TextColor.B, TextColor.G, TextColor.R),
-            };
+                var drawOptions = new DrawOptions
+                {
+                    ShowConfidence = ShowConfidence,
+                    ShowLabel = ShowLabel,
+                    BoxThickness = BoxThickness,
+                    FontScale = FontScale,
+                    BoxColor = (BoxColor.B, BoxColor.G, BoxColor.R),
+                    TextColor = (TextColor.B, TextColor.G, TextColor.R),
+                };
 
-            Mat resultMat;
-            if (IsObbModel)
-            {
-                resultMat = session.DetectOBBAndDraw(
-                    image,
-                    [.. LabesSource],
-                    detectionOptions,
-                    drawOptions
-                );
-            }
-            else
-            {
-                resultMat = session.DetectAndDraw(
-                    image,
-                    [.. LabesSource],
-                    detectionOptions,
-                    drawOptions
-                );
-            }
-            ResultImage = resultMat.ToBitmapSource();
-            resultMat.Dispose();
+                Mat resultMat;
+                if (IsObbModel)
+                {
+                    resultMat = session.DetectOBBAndDraw(
+                        image,
+                        [.. LabesSource],
+                        detectionOptions,
+                        drawOptions
+                    );
+                }
+                else
+                {
+                    resultMat = session.DetectAndDraw(
+                        image,
+                        [.. LabesSource],
+                        detectionOptions,
+                        drawOptions
+                    );
+                }
+                
+                System.Windows.Application.Current.Dispatcher.Invoke(() =>
+                {
+                    ResultImage = resultMat.ToBitmapSource();
+                });
+                resultMat.Dispose();
+            });
         }
         catch (Exception ex)
         {
             ShowMessage($"检测失败: {ex.Message}\n\n{ex.StackTrace}", "错误");
+        }
+        finally
+        {
+            IsDetecting = false;
         }
     }
 

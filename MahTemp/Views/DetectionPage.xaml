@@ -275,7 +275,29 @@
                                 Margin="10,8"
                                 BorderBrush="{StaticResource MahApps.Brushes.Accent}"
                                 BorderThickness="0.5">
-                                <Image Source="{Binding ResultImage}" Stretch="Uniform" />
+                                <Grid>
+                                    <Image Source="{Binding ResultImage}" Stretch="Uniform" />
+                                    
+                                    <!--  加载动画  -->
+                                    <Grid Visibility="{Binding IsDetecting, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                        <Grid.Background>
+                                            <SolidColorBrush Opacity="0.7" Color="Black" />
+                                        </Grid.Background>
+                                        
+                                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <mah:ProgressRing
+                                                Width="60"
+                                                Height="60"
+                                                IsActive="{Binding IsDetecting}" />
+                                            <TextBlock
+                                                Margin="0,15,0,0"
+                                                HorizontalAlignment="Center"
+                                                FontSize="16"
+                                                Foreground="White"
+                                                Text="正在检测中..." />
+                                        </StackPanel>
+                                    </Grid>
+                                </Grid>
                             </Border>
                         </Grid>
                     </mah:SplitView>
