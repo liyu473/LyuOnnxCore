@@ -34,12 +34,12 @@ public partial class DetectionViewModel : ViewModelBase
     public ObservableCollection<string> SelelctedLabels { get; } = [];
 
     [ObservableProperty]
-    public partial double ConfidenceThreshold { get; set; } = 0.25;
+    public partial double ConfidenceThreshold { get; set; } = 0.4;
 
     #region 检测设置
 
     [ObservableProperty]
-    public partial double NmsThreshold { get; set; } = 0.3;
+    public partial double NmsThreshold { get; set; } = 0.45;
 
     [ObservableProperty]
     public partial bool ShowConfidence { get; set; } = true;
@@ -133,40 +133,69 @@ public partial class DetectionViewModel : ViewModelBase
         }
     }
 
+    [ObservableProperty]
+    private bool isObbModel;
+
     [RelayCommand(CanExecute = nameof(CanStartDetection))]
     private void StartDetection()
     {
-        using var session = new InferenceSession(SelectedOnnxModel!.FullPath);
-        using var image = Cv2.ImRead(ImagePath!);
-
-        var detectionOptions = new DetectionOptions
+        try
         {
-            ConfidenceThreshold = (float)ConfidenceThreshold,
-            NmsThreshold = (float)NmsThreshold,
-            FilterLabels = [.. SelelctedLabels],
-            IsFilterOverlay = IsFilterOverlay,
-            IsCrossClass = IsCrossClass,
-            OverlayThreshold = (float)OverlayThreshold,
-        };
+            using var session = new InferenceSession(SelectedOnnxModel!.FullPath);
+            using var image = Cv2.ImRead(ImagePath!);
 
-        var drawOptions = new DrawOptions
+            if (image.Empty())
+            {
+                System.Windows.MessageBox.Show("图像加载失败", "错误");
+                return;
+            }
+
+            var detectionOptions = new DetectionOptions
+            {
+                ConfidenceThreshold = (float)ConfidenceThreshold,
+                NmsThreshold = (float)NmsThreshold,
+                FilterLabels = [.. SelelctedLabels],
+                IsFilterOverlay = IsFilterOverlay,
+                IsCrossClass = IsCrossClass,
+                OverlayThreshold = (float)OverlayThreshold,
+            };
+
+            var drawOptions = new DrawOptions
+            {
+                ShowConfidence = ShowConfidence,
+                ShowLabel = ShowLabel,
+                BoxThickness = BoxThickness,
+                FontScale = FontScale,
+                BoxColor = (BoxColor.B, BoxColor.G, BoxColor.R),
+                TextColor = (TextColor.B, TextColor.G, TextColor.R),
+            };
+
+            Mat resultMat;
+            if (IsObbModel)
+            {
+                resultMat = session.DetectOBBAndDraw(
+                    image,
+                    [.. LabesSource],
+                    detectionOptions,
+                    drawOptions
+                );
+            }
+            else
+            {
+                resultMat = session.DetectAndDraw(
+                    image,
+                    [.. LabesSource],
+                    detectionOptions,
+                    drawOptions
+                );
+            }
+            ResultImage = resultMat.ToBitmapSource();
+            resultMat.Dispose();
+        }
+        catch (Exception ex)
         {
-            ShowConfidence = ShowConfidence,
-            ShowLabel = ShowLabel,
-            BoxThickness = BoxThickness,
-            FontScale = FontScale,
-            BoxColor = (BoxColor.B, BoxColor.G, BoxColor.R),
-            TextColor = (TextColor.B, TextColor.G, TextColor.R),
-        };
-
-        var resultMat = session.DetectOBBAndDraw(
-            image,
-            [.. LabesSource],
-            detectionOptions,
-            drawOptions
-        );
-
-        ResultImage = resultMat.ToBitmapSource();
+            ShowMessage($"检测失败: {ex.Message}\n\n{ex.StackTrace}", "错误");
+        }
     }
 
     private bool CanStartDetection() =>

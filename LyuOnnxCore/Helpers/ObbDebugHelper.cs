@@ -120,7 +120,7 @@ public static class ObbDebugHelper
         using var rgb = new Mat();
         Cv2.CvtColor(padded, rgb, ColorConversionCodes.BGR2RGB);
 
-        var tensor = new Microsoft.ML.OnnxRuntime.Tensors.DenseTensor<float>(new[] { 1, 3, targetHeight, targetWidth });
+        var tensor = new Microsoft.ML.OnnxRuntime.Tensors.DenseTensor<float>([1, 3, targetHeight, targetWidth]);
 
         unsafe
         {

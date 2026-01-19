@@ -244,6 +244,10 @@
                                     Margin="10,0"
                                     Command="{Binding StartDetectionCommand}"
                                     Content="开始检测" />
+                                <CheckBox
+                                    Margin="10,0"
+                                    Content="是否为OBB模型"
+                                    IsChecked="{Binding IsObbModel}" />
                                 <Button Margin="10,0" Content="检测选项">
                                     <i:Interaction.Triggers>
                                         <i:EventTrigger EventName="Click">

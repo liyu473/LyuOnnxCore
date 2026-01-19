@@ -279,6 +279,9 @@ public static class MatDetectionExtensions
 
     /// <summary>
     /// 后处理：解析模型输出，应用 NMS
+    /// YOLOv8 输出格式: [batch, 4+num_classes, num_predictions]
+    /// 前4个参数为: cx, cy, w, h (边界框中心和尺寸，像素坐标)
+    /// 后面 num_classes 个参数为类别置信度(已经过 Sigmoid)
     /// </summary>
     private static List<DetectionResult> PostProcess(
         Tensor<float> outputTensor,
@@ -296,23 +299,22 @@ public static class MatDetectionExtensions
         int numFeatures = dims[1];
         int numPredictions = dims[2];
         int numClasses = numFeatures - 4;
+        
+        // 验证类别数是否合理
+        if (numClasses <= 0)
+        {
+            numClasses = labels.Length;
+        }
 
         for (int i = 0; i < numPredictions; i++)
         {
-            // 获取边界框坐标（中心点格式）
-            float cx = outputTensor[0, 0, i];
-            float cy = outputTensor[0, 1, i];
-            float bw = outputTensor[0, 2, i];
-            float bh = outputTensor[0, 3, i];
-
             // 找到最高置信度的类别
-            // ⚠️ 关键: ONNX 输出没有经过 Sigmoid，需要手动应用
+            // 注意: YOLOv8 导出的 ONNX 模型，分数通常已经过 Sigmoid 处理
             float maxScore = 0;
             int maxIndex = 0;
             for (int c = 0; c < numClasses; c++)
             {
-                float rawScore = outputTensor[0, 4 + c, i];
-                float score = Sigmoid(rawScore);  // 应用 Sigmoid 激活
+                float score = outputTensor[0, 4 + c, i];
                 if (score > maxScore)
                 {
                     maxScore = score;
@@ -320,9 +322,15 @@ public static class MatDetectionExtensions
                 }
             }
 
-            // 过滤低置信度
+            // 提前过滤低置信度（性能优化）
             if (maxScore < options.ConfidenceThreshold)
                 continue;
+
+            // 获取边界框坐标（中心点格式，像素坐标）
+            float cx = outputTensor[0, 0, i];
+            float cy = outputTensor[0, 1, i];
+            float bw = outputTensor[0, 2, i];
+            float bh = outputTensor[0, 3, i];
 
             // 转换为原始图像坐标
             float x1 = (cx - bw / 2 - padW) / ratio;
@@ -330,15 +338,15 @@ public static class MatDetectionExtensions
             float x2 = (cx + bw / 2 - padW) / ratio;
             float y2 = (cy + bh / 2 - padH) / ratio;
 
-            // 确保坐标有效
-            if (x2 <= x1 || y2 <= y1)
-                continue;
-
             // 裁剪到图像边界
             x1 = Math.Max(0, x1);
             y1 = Math.Max(0, y1);
             x2 = Math.Min(originalWidth, x2);
             y2 = Math.Min(originalHeight, y2);
+
+            // 确保坐标有效
+            if (x2 <= x1 || y2 <= y1)
+                continue;
 
             detections.Add(new DetectionResult
             {

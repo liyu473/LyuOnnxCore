@@ -302,8 +302,8 @@ public static class MatObbDetectionExtensions
         int padH,
         DetectionOptions options,
         string[] labels,
-        int originalWidth,
-        int originalHeight)
+        int _,
+        int _1)
     {
         var detections = new List<DetectionResult>();
 
