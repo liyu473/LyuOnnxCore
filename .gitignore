@@ -19,6 +19,6 @@ TestResults/
 out/
 
 # ONNX Models
-OnnxModel/*.onnx
-OnnxModel/*.pb
-OnnxModel/*.pt
+**/OnnxModel/*.onnx
+**/OnnxModel/*.pb
+**/OnnxModel/*.pt
