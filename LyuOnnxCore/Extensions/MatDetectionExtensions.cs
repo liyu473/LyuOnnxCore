@@ -33,8 +33,11 @@ public static class MatDetectionExtensions
 
         options ??= new DetectionOptions();
 
+        // 获取模型输入尺寸
+        var (inputWidth, inputHeight) = GetModelInputSize(session, options);
+
         // 预处理图像
-        var (inputTensor, ratio, padW, padH) = PreprocessImage(image, 640, 640);
+        var (inputTensor, ratio, padW, padH) = PreprocessImage(image, inputWidth, inputHeight);
 
         // 创建输入
         var inputs = new List<NamedOnnxValue>
@@ -172,6 +175,45 @@ public static class MatDetectionExtensions
     #region 私有辅助方法
 
     /// <summary>
+    /// 获取模型输入尺寸
+    /// </summary>
+    private static (int width, int height) GetModelInputSize(InferenceSession session, DetectionOptions options)
+    {
+        // 如果用户指定了尺寸，使用用户指定的
+        if (options.InputWidth.HasValue && options.InputHeight.HasValue)
+        {
+            return (options.InputWidth.Value, options.InputHeight.Value);
+        }
+
+        // 尝试从模型元数据获取
+        try
+        {
+            var inputMetadata = session.InputMetadata[session.InputNames[0]];
+            var shape = inputMetadata.Dimensions;
+            
+            // YOLO 模型输入格式通常是 [batch, channels, height, width]
+            if (shape.Length == 4)
+            {
+                int height = shape[2];
+                int width = shape[3];
+                
+                // 如果是动态尺寸（-1），使用默认值
+                if (height > 0 && width > 0)
+                {
+                    return (width, height);
+                }
+            }
+        }
+        catch
+        {
+            // 如果获取失败，使用默认值
+        }
+
+        // 默认使用 640x640
+        return (640, 640);
+    }
+
+    /// <summary>
     /// 预处理图像：调整大小、填充、归一化
     /// </summary>
     private static (DenseTensor<float> tensor, float ratio, int padW, int padH) PreprocessImage(
@@ -227,6 +269,15 @@ public static class MatDetectionExtensions
     }
 
     /// <summary>
+    /// <summary>
+    /// Sigmoid 激活函数
+    /// </summary>
+    private static float Sigmoid(float x)
+    {
+        return 1.0f / (1.0f + MathF.Exp(-x));
+    }
+
+    /// <summary>
     /// 后处理：解析模型输出，应用 NMS
     /// </summary>
     private static List<DetectionResult> PostProcess(
@@ -255,11 +306,13 @@ public static class MatDetectionExtensions
             float bh = outputTensor[0, 3, i];
 
             // 找到最高置信度的类别
+            // ⚠️ 关键: ONNX 输出没有经过 Sigmoid，需要手动应用
             float maxScore = 0;
             int maxIndex = 0;
             for (int c = 0; c < numClasses; c++)
             {
-                float score = outputTensor[0, 4 + c, i];
+                float rawScore = outputTensor[0, 4 + c, i];
+                float score = Sigmoid(rawScore);  // 应用 Sigmoid 激活
                 if (score > maxScore)
                 {
                     maxScore = score;

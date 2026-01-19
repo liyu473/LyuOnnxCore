@@ -36,4 +36,14 @@ public class DetectionOptions
     /// 推荐值: 0.8 (表示小框被大框包含80%以上时过滤)
     /// </summary>
     public float OverlayThreshold { get; set; } = 0.8f;
+
+    /// <summary>
+    /// 模型输入宽度（null 时自动从模型获取，默认 640）
+    /// </summary>
+    public int? InputWidth { get; set; } = null;
+
+    /// <summary>
+    /// 模型输入高度（null 时自动从模型获取，默认 640）
+    /// </summary>
+    public int? InputHeight { get; set; } = null;
 }

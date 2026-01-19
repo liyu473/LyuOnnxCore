@@ -33,8 +33,11 @@ public static class MatObbDetectionExtensions
 
         options ??= new DetectionOptions();
 
+        // 获取模型输入尺寸
+        var (inputWidth, inputHeight) = GetModelInputSize(session, options);
+
         // 预处理图像
-        var (inputTensor, ratio, padW, padH) = PreprocessImage(image, 640, 640);
+        var (inputTensor, ratio, padW, padH) = PreprocessImage(image, inputWidth, inputHeight);
 
         // 创建输入
         var inputs = new List<NamedOnnxValue>
@@ -178,6 +181,45 @@ public static class MatObbDetectionExtensions
     #region 私有辅助方法
 
     /// <summary>
+    /// 获取模型输入尺寸
+    /// </summary>
+    private static (int width, int height) GetModelInputSize(InferenceSession session, DetectionOptions options)
+    {
+        // 如果用户指定了尺寸，使用用户指定的
+        if (options.InputWidth.HasValue && options.InputHeight.HasValue)
+        {
+            return (options.InputWidth.Value, options.InputHeight.Value);
+        }
+
+        // 尝试从模型元数据获取
+        try
+        {
+            var inputMetadata = session.InputMetadata[session.InputNames[0]];
+            var shape = inputMetadata.Dimensions;
+            
+            // YOLO 模型输入格式通常是 [batch, channels, height, width]
+            if (shape.Length == 4)
+            {
+                int height = shape[2];
+                int width = shape[3];
+                
+                // 如果是动态尺寸（-1），使用默认值
+                if (height > 0 && width > 0)
+                {
+                    return (width, height);
+                }
+            }
+        }
+        catch
+        {
+            // 如果获取失败，使用默认值
+        }
+
+        // 默认使用 640x640
+        return (640, 640);
+    }
+
+    /// <summary>
     /// 预处理图像：调整大小、填充、归一化
     /// </summary>
     private static (DenseTensor<float> tensor, float ratio, int padW, int padH) PreprocessImage(
@@ -237,6 +279,21 @@ public static class MatObbDetectionExtensions
     /// OBB 模型输出格式: [batch, 5+num_classes, num_predictions]
     /// 其中 5 个参数为: cx, cy, w, h, angle
     /// </summary>
+    /// <summary>
+    /// Sigmoid 激活函数
+    /// </summary>
+    private static float Sigmoid(float x)
+    {
+        return 1.0f / (1.0f + MathF.Exp(-x));
+    }
+
+    /// <summary>
+    /// 后处理：解析 OBB 模型输出，应用 NMS
+    /// YOLOv8-OBB 输出格式: [batch, 4+num_classes+1, num_predictions]
+    /// 前4个参数为: cx, cy, w, h (边界框中心和尺寸，像素坐标)
+    /// 中间 num_classes 个参数为类别置信度
+    /// 最后1个参数为: angle (旋转角度，弧度)
+    /// </summary>
     private static List<DetectionResult> PostProcessOBB(
         Tensor<float> outputTensor,
         int[] dims,
@@ -252,23 +309,25 @@ public static class MatObbDetectionExtensions
 
         int numFeatures = dims[1];
         int numPredictions = dims[2];
-        int numClasses = numFeatures - 5; // OBB 模型有 5 个额外参数
+        
+        // YOLOv8-OBB 格式: 4 (cx, cy, w, h) + num_classes + 1 (angle)
+        int numClasses = numFeatures - 4 - 1;
+        
+        // 验证类别数是否合理
+        if (numClasses <= 0)
+        {
+            // 可能是其他格式，尝试使用标签数量
+            numClasses = labels.Length;
+        }
 
         for (int i = 0; i < numPredictions; i++)
         {
-            // 获取边界框坐标和角度（中心点格式）
-            float cx = outputTensor[0, 0, i];
-            float cy = outputTensor[0, 1, i];
-            float bw = outputTensor[0, 2, i];
-            float bh = outputTensor[0, 3, i];
-            float angle = outputTensor[0, 4, i]; // 旋转角度（弧度）
-
             // 找到最高置信度的类别
             float maxScore = 0;
             int maxIndex = 0;
             for (int c = 0; c < numClasses; c++)
             {
-                float score = outputTensor[0, 5 + c, i];
+                float score = outputTensor[0, 4 + c, i];
                 if (score > maxScore)
                 {
                     maxScore = score;
@@ -280,19 +339,24 @@ public static class MatObbDetectionExtensions
             if (maxScore < options.ConfidenceThreshold)
                 continue;
 
+            // 获取边界框参数（像素坐标，相对于模型输入尺寸）
+            float cx = outputTensor[0, 0, i];  // 中心 X
+            float cy = outputTensor[0, 1, i];  // 中心 Y
+            float w = outputTensor[0, 2, i];   // 宽度
+            float h = outputTensor[0, 3, i];   // 高度
+            
+            // 获取旋转角度（最后一个参数）
+            float angle = outputTensor[0, 4 + numClasses, i];  // 弧度
+
             // 转换为原始图像坐标
             float centerX = (cx - padW) / ratio;
             float centerY = (cy - padH) / ratio;
-            float width = bw / ratio;
-            float height = bh / ratio;
+            float width = w / ratio;
+            float height = h / ratio;
 
             // 确保坐标有效
             if (width <= 0 || height <= 0)
                 continue;
-
-            // 裁剪到图像边界
-            centerX = Math.Clamp(centerX, 0, originalWidth);
-            centerY = Math.Clamp(centerY, 0, originalHeight);
 
             detections.Add(new DetectionResult
             {
@@ -305,6 +369,28 @@ public static class MatObbDetectionExtensions
 
         // 应用 NMS
         return ApplyNMSOBB(detections, options.NmsThreshold);
+    }
+
+    /// <summary>
+    /// 从4个角点计算OBB的中心点、宽高和角度
+    /// </summary>
+    private static (float centerX, float centerY, float width, float height, float angle) CalculateOBBFromCorners(
+        float x1, float y1, float x2, float y2, float x3, float y3, float x4, float y4)
+    {
+        // 计算中心点（4个角点的平均值）
+        float centerX = (x1 + x2 + x3 + x4) / 4f;
+        float centerY = (y1 + y2 + y3 + y4) / 4f;
+
+        // 计算宽度（边1-2的长度）
+        float width = MathF.Sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1));
+
+        // 计算高度（边2-3的长度）
+        float height = MathF.Sqrt((x3 - x2) * (x3 - x2) + (y3 - y2) * (y3 - y2));
+
+        // 计算旋转角度（从边1-2计算）
+        float angle = MathF.Atan2(y2 - y1, x2 - x1);
+
+        return (centerX, centerY, width, height, angle);
     }
 
     /// <summary>

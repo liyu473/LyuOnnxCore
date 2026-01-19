@@ -1,3 +1,6 @@
+using System.Collections.ObjectModel;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Extensions;
@@ -6,9 +9,6 @@ using LyuOnnxCore.Helpers;
 using LyuOnnxCore.Models;
 using Microsoft.ML.OnnxRuntime;
 using OpenCvSharp;
-using System.Collections.ObjectModel;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
 
 namespace MahTemp.ViewModels;
 
@@ -108,7 +108,11 @@ public partial class DetectionViewModel : ViewModelBase
         {
             LabesSource.Clear();
             var labels = LabelHelper.LoadLabelsFromFile(dialog.FileName);
-            labels.ForEach(l => LabesSource.Add(l));
+            labels.ForEach(l =>
+            {
+                LabesSource.Add(l);
+                SelelctedLabels.Add(l);
+            });
         }
     }
 
@@ -161,6 +165,7 @@ public partial class DetectionViewModel : ViewModelBase
             detectionOptions,
             drawOptions
         );
+
         ResultImage = resultMat.ToBitmapSource();
     }
 
