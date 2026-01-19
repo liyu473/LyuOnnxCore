@@ -1,6 +1,4 @@
 <Solution>
-  <Project Path="CvTest/LyuCvExCore.csproj" Id="06199dc7-4093-4794-b216-cb84555b74ca" />
   <Project Path="LyuOnnxCore/LyuOnnxCore.csproj" Id="b8676a63-5624-48b7-950d-b6e952fc50f2" />
   <Project Path="MahTemp/MahTemp.csproj" />
-  <Project Path="TcpCore/TcpCore.csproj" Id="851aa2ef-8203-48db-b9cc-a32999be2427" />
 </Solution>

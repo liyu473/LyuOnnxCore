@@ -28,7 +28,6 @@
 	</ItemGroup>
 
 	<ItemGroup>
-	  <ProjectReference Include="..\CvTest\LyuCvExCore.csproj" />
 	  <ProjectReference Include="..\LyuOnnxCore\LyuOnnxCore.csproj" />
 	</ItemGroup>
 

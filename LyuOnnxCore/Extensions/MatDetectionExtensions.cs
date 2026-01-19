@@ -1,234 +1,202 @@
 using LyuOnnxCore.Models;
 using Microsoft.ML.OnnxRuntime;
 using Microsoft.ML.OnnxRuntime.Tensors;
+using OpenCvSharp;
 
 namespace LyuOnnxCore.Extensions;
 
 /// <summary>
-/// ONNX 目标检测扩展方法（与图像库解耦）
+/// 基于 OpenCV Mat 的 ONNX 目标检测扩展方法
 /// </summary>
-public static class OnnxDetectionExtensions
+public static class MatDetectionExtensions
 {
     /// <summary>
     /// 执行目标检测
     /// </summary>
     /// <param name="session">ONNX 推理会话</param>
-    /// <param name="imageData">图像数据</param>
+    /// <param name="image">OpenCV Mat 图像</param>
     /// <param name="labels">标签名称数组</param>
     /// <param name="options">检测选项</param>
     /// <returns>检测结果列表</returns>
     public static List<DetectionResult> Detect(
         this InferenceSession session,
-        ImageData imageData,
+        Mat image,
         string[] labels,
         DetectionOptions? options = null)
     {
+        if (image == null || image.Empty())
+            throw new ArgumentException("图像不能为空", nameof(image));
+
         if (labels == null || labels.Length == 0)
             throw new ArgumentException("标签数组不能为空", nameof(labels));
 
         options ??= new DetectionOptions();
 
-        var (inputTensor, ratio, padW, padH) = PreprocessImage(imageData, 640, 640);
+        // 预处理图像
+        var (inputTensor, ratio, padW, padH) = PreprocessImage(image, 640, 640);
 
+        // 创建输入
         var inputs = new List<NamedOnnxValue>
         {
             NamedOnnxValue.CreateFromTensor(session.InputNames[0], inputTensor)
         };
 
+        // 执行推理
         using var outputs = session.Run(inputs);
         var outputTensor = outputs.ElementAt(0).AsTensor<float>();
         var dims = outputTensor.Dimensions.ToArray();
 
-        var results = PostProcess(outputTensor, dims, ratio, padW, padH, options, labels);
+        // 后处理
+        var results = PostProcess(outputTensor, dims, ratio, padW, padH, options, labels, image.Width, image.Height);
 
+        // 过滤标签
         if (options.FilterLabels is { Length: > 0 })
         {
             results = [.. results.Where(r => options.FilterLabels.Contains(r.LabelName))];
+        }
+
+        // 过滤重叠框
+        if (options.IsFilterOverlay)
+        {
+            results = results.FilterContained(options.OverlayThreshold, options.IsCrossClass);
         }
 
         return results;
     }
 
     /// <summary>
-    /// 在 ImageData 上绘制检测结果（仅绘制边界框，不含文字）
+    /// 在 Mat 图像上绘制检测结果
     /// </summary>
-    /// <param name="image">原始图像数据</param>
+    /// <param name="image">原始图像</param>
     /// <param name="detections">检测结果列表</param>
     /// <param name="options">绘制选项</param>
-    /// <returns>绘制后的图像数据</returns>
-    public static ImageData DrawDetections(
-        this ImageData image,
+    /// <returns>绘制后的图像（新的 Mat 对象）</returns>
+    public static Mat DrawDetections(
+        this Mat image,
         List<DetectionResult> detections,
         DrawOptions? options = null)
     {
+        if (image == null || image.Empty())
+            throw new ArgumentException("图像不能为空", nameof(image));
+
         options ??= new DrawOptions();
 
-        // 复制图像数据
-        var result = new ImageData
-        {
-            Width = image.Width,
-            Height = image.Height,
-            Channels = image.Channels,
-            IsBgr = image.IsBgr,
-            Data = [.. image.Data]
-        };
+        // 克隆图像以避免修改原图
+        var result = image.Clone();
 
         foreach (var detection in detections)
         {
             var box = detection.BoundingBox;
-            DrawRectangle(result, box.X, box.Y, box.Width, box.Height,
-                options.BoxColor.R, options.BoxColor.G, options.BoxColor.B,
-                options.BoxThickness);
+            var rect = new Rect(box.X, box.Y, box.Width, box.Height);
+            var color = new Scalar(options.BoxColor.B, options.BoxColor.G, options.BoxColor.R);
+
+            // 绘制边界框
+            Cv2.Rectangle(result, rect, color, options.BoxThickness);
+
+            // 准备标签文本
+            string label = "";
+            if (options.ShowLabel && options.ShowConfidence)
+            {
+                label = $"{detection.LabelName} {detection.Confidence:P0}";
+            }
+            else if (options.ShowLabel)
+            {
+                label = detection.LabelName;
+            }
+            else if (options.ShowConfidence)
+            {
+                label = $"{detection.Confidence:P0}";
+            }
+
+            // 绘制标签
+            if (!string.IsNullOrEmpty(label))
+            {
+                var textColor = new Scalar(options.TextColor.B, options.TextColor.G, options.TextColor.R);
+                var textSize = Cv2.GetTextSize(label, HersheyFonts.HersheySimplex, options.FontScale, 1, out int baseline);
+
+                // 绘制文本背景
+                var textRect = new Rect(box.X, box.Y - textSize.Height - baseline - 5, textSize.Width + 5, textSize.Height + baseline + 5);
+                Cv2.Rectangle(result, textRect, color, -1);
+
+                // 绘制文本
+                Cv2.PutText(result, label, new Point(box.X + 2, box.Y - baseline - 2),
+                    HersheyFonts.HersheySimplex, options.FontScale, textColor, 1, LineTypes.AntiAlias);
+            }
         }
 
         return result;
     }
 
     /// <summary>
-    /// 执行检测并绘制结果（仅边界框）
+    /// 执行检测并绘制结果
     /// </summary>
     /// <param name="session">ONNX 推理会话</param>
-    /// <param name="imageData">图像数据</param>
+    /// <param name="image">OpenCV Mat 图像</param>
     /// <param name="labels">标签名称数组</param>
     /// <param name="detectionOptions">检测选项</param>
     /// <param name="drawOptions">绘制选项</param>
-    /// <returns>绘制后的图像数据</returns>
-    public static ImageData DetectAndDraw(
+    /// <returns>绘制后的图像</returns>
+    public static Mat DetectAndDraw(
         this InferenceSession session,
-        ImageData imageData,
+        Mat image,
         string[] labels,
         DetectionOptions? detectionOptions = null,
         DrawOptions? drawOptions = null)
     {
-        var results = session.Detect(imageData, labels, detectionOptions);
-        return imageData.DrawDetections(results, drawOptions);
+        var results = session.Detect(image, labels, detectionOptions);
+        return image.DrawDetections(results, drawOptions);
     }
 
     #region 私有辅助方法
 
     /// <summary>
-    /// 在图像上绘制矩形框
+    /// 预处理图像：调整大小、填充、归一化
     /// </summary>
-    private static void DrawRectangle(ImageData image, int x, int y, int width, int height,
-        int r, int g, int b, int thickness)
-    {
-        // 确保坐标在图像范围内
-        int x1 = Math.Max(0, x);
-        int y1 = Math.Max(0, y);
-        int x2 = Math.Min(image.Width - 1, x + width);
-        int y2 = Math.Min(image.Height - 1, y + height);
-
-        // 绘制四条边
-        for (int t = 0; t < thickness; t++)
-        {
-            // 上边
-            DrawHorizontalLine(image, x1, x2, y1 + t, r, g, b);
-            // 下边
-            DrawHorizontalLine(image, x1, x2, y2 - t, r, g, b);
-            // 左边
-            DrawVerticalLine(image, y1, y2, x1 + t, r, g, b);
-            // 右边
-            DrawVerticalLine(image, y1, y2, x2 - t, r, g, b);
-        }
-    }
-
-    /// <summary>
-    /// 绘制水平线
-    /// </summary>
-    private static void DrawHorizontalLine(ImageData image, int x1, int x2, int y,
-        int r, int g, int b)
-    {
-        if (y < 0 || y >= image.Height) return;
-
-        for (int x = x1; x <= x2; x++)
-        {
-            if (x < 0 || x >= image.Width) continue;
-            SetPixel(image, x, y, r, g, b);
-        }
-    }
-
-    /// <summary>
-    /// 绘制垂直线
-    /// </summary>
-    private static void DrawVerticalLine(ImageData image, int y1, int y2, int x,
-        int r, int g, int b)
-    {
-        if (x < 0 || x >= image.Width) return;
-
-        for (int y = y1; y <= y2; y++)
-        {
-            if (y < 0 || y >= image.Height) continue;
-            SetPixel(image, x, y, r, g, b);
-        }
-    }
-
-    /// <summary>
-    /// 设置像素颜色
-    /// </summary>
-    private static void SetPixel(ImageData image, int x, int y, int r, int g, int b)
-    {
-        int idx = (y * image.Width + x) * image.Channels;
-
-        if (image.IsBgr)
-        {
-            image.Data[idx + 0] = (byte)b;
-            image.Data[idx + 1] = (byte)g;
-            image.Data[idx + 2] = (byte)r;
-        }
-        else
-        {
-            image.Data[idx + 0] = (byte)r;
-            image.Data[idx + 1] = (byte)g;
-            image.Data[idx + 2] = (byte)b;
-        }
-    }
-
     private static (DenseTensor<float> tensor, float ratio, int padW, int padH) PreprocessImage(
-        ImageData image, int targetWidth, int targetHeight)
+        Mat image, int targetWidth, int targetHeight)
     {
+        // 计算缩放比例
         float ratio = Math.Min((float)targetWidth / image.Width, (float)targetHeight / image.Height);
 
         int newWidth = (int)(image.Width * ratio);
         int newHeight = (int)(image.Height * ratio);
 
+        // 计算填充
         int padW = (targetWidth - newWidth) / 2;
         int padH = (targetHeight - newHeight) / 2;
 
+        // 调整图像大小
+        using var resized = new Mat();
+        Cv2.Resize(image, resized, new Size(newWidth, newHeight), interpolation: InterpolationFlags.Linear);
+
+        // 创建填充后的图像（灰色背景 114）
+        using var padded = new Mat(targetHeight, targetWidth, MatType.CV_8UC3, new Scalar(114, 114, 114));
+
+        // 将调整大小后的图像复制到中心
+        var roi = new Rect(padW, padH, newWidth, newHeight);
+        resized.CopyTo(new Mat(padded, roi));
+
+        // 转换为 RGB（OpenCV 默认是 BGR）
+        using var rgb = new Mat();
+        Cv2.CvtColor(padded, rgb, ColorConversionCodes.BGR2RGB);
+
+        // 创建张量并归一化
         var tensor = new DenseTensor<float>([1, 3, targetHeight, targetWidth]);
 
-        // 填充灰色背景 (114/255)
-        float grayValue = 114f / 255f;
-        for (int c = 0; c < 3; c++)
-            for (int y = 0; y < targetHeight; y++)
-                for (int x = 0; x < targetWidth; x++)
-                    tensor[0, c, y, x] = grayValue;
-
-        // 填充图像数据
-        for (int y = 0; y < newHeight; y++)
+        // 填充张量数据 (HWC -> CHW 并归一化到 0-1)
+        unsafe
         {
-            int srcY = (int)(y / ratio);
-            if (srcY >= image.Height) srcY = image.Height - 1;
+            byte* ptr = (byte*)rgb.DataPointer;
+            int channels = rgb.Channels();
 
-            for (int x = 0; x < newWidth; x++)
+            for (int y = 0; y < targetHeight; y++)
             {
-                int srcX = (int)(x / ratio);
-                if (srcX >= image.Width) srcX = image.Width - 1;
-
-                int srcIdx = (srcY * image.Width + srcX) * image.Channels;
-                int dstY = y + padH;
-                int dstX = x + padW;
-
-                if (image.IsBgr)
+                for (int x = 0; x < targetWidth; x++)
                 {
-                    tensor[0, 0, dstY, dstX] = image.Data[srcIdx + 2] / 255f; // R
-                    tensor[0, 1, dstY, dstX] = image.Data[srcIdx + 1] / 255f; // G
-                    tensor[0, 2, dstY, dstX] = image.Data[srcIdx + 0] / 255f; // B
-                }
-                else
-                {
-                    tensor[0, 0, dstY, dstX] = image.Data[srcIdx + 0] / 255f; // R
-                    tensor[0, 1, dstY, dstX] = image.Data[srcIdx + 1] / 255f; // G
-                    tensor[0, 2, dstY, dstX] = image.Data[srcIdx + 2] / 255f; // B
+                    int idx = (y * targetWidth + x) * channels;
+                    tensor[0, 0, y, x] = ptr[idx + 0] / 255f; // R
+                    tensor[0, 1, y, x] = ptr[idx + 1] / 255f; // G
+                    tensor[0, 2, y, x] = ptr[idx + 2] / 255f; // B
                 }
             }
         }
@@ -236,6 +204,9 @@ public static class OnnxDetectionExtensions
         return (tensor, ratio, padW, padH);
     }
 
+    /// <summary>
+    /// 后处理：解析模型输出，应用 NMS
+    /// </summary>
     private static List<DetectionResult> PostProcess(
         Tensor<float> outputTensor,
         int[] dims,
@@ -243,7 +214,9 @@ public static class OnnxDetectionExtensions
         int padW,
         int padH,
         DetectionOptions options,
-        string[] labels)
+        string[] labels,
+        int originalWidth,
+        int originalHeight)
     {
         var detections = new List<DetectionResult>();
 
@@ -253,11 +226,13 @@ public static class OnnxDetectionExtensions
 
         for (int i = 0; i < numPredictions; i++)
         {
+            // 获取边界框坐标（中心点格式）
             float cx = outputTensor[0, 0, i];
             float cy = outputTensor[0, 1, i];
             float bw = outputTensor[0, 2, i];
             float bh = outputTensor[0, 3, i];
 
+            // 找到最高置信度的类别
             float maxScore = 0;
             int maxIndex = 0;
             for (int c = 0; c < numClasses; c++)
@@ -270,16 +245,25 @@ public static class OnnxDetectionExtensions
                 }
             }
 
+            // 过滤低置信度
             if (maxScore < options.ConfidenceThreshold)
                 continue;
 
+            // 转换为原始图像坐标
             float x1 = (cx - bw / 2 - padW) / ratio;
             float y1 = (cy - bh / 2 - padH) / ratio;
             float x2 = (cx + bw / 2 - padW) / ratio;
             float y2 = (cy + bh / 2 - padH) / ratio;
 
+            // 确保坐标有效
             if (x2 <= x1 || y2 <= y1)
                 continue;
+
+            // 裁剪到图像边界
+            x1 = Math.Max(0, x1);
+            y1 = Math.Max(0, y1);
+            x2 = Math.Min(originalWidth, x2);
+            y2 = Math.Min(originalHeight, y2);
 
             detections.Add(new DetectionResult
             {
@@ -287,19 +271,23 @@ public static class OnnxDetectionExtensions
                 LabelName = maxIndex < labels.Length ? labels[maxIndex] : $"class_{maxIndex}",
                 Confidence = maxScore,
                 BoundingBox = new BoundingBox(
-                    (int)Math.Max(0, x1),
-                    (int)Math.Max(0, y1),
+                    (int)x1,
+                    (int)y1,
                     (int)(x2 - x1),
                     (int)(y2 - y1))
             });
         }
 
+        // 应用 NMS
         return ApplyNMS(detections, options.NmsThreshold);
     }
 
+    /// <summary>
+    /// 非极大值抑制（NMS）
+    /// </summary>
     private static List<DetectionResult> ApplyNMS(List<DetectionResult> detections, float nmsThreshold)
     {
-        List<DetectionResult> result = [];
+        var result = new List<DetectionResult>();
         var sorted = detections.OrderByDescending(d => d.Confidence).ToList();
 
         while (sorted.Count > 0)
@@ -310,6 +298,7 @@ public static class OnnxDetectionExtensions
 
             sorted = [.. sorted.Where(d =>
             {
+                // 不同类别不进行 NMS
                 if (d.LabelIndex != best.LabelIndex)
                     return true;
 
@@ -321,6 +310,9 @@ public static class OnnxDetectionExtensions
         return result;
     }
 
+    /// <summary>
+    /// 计算两个边界框的 IoU
+    /// </summary>
     private static float CalculateIoU(BoundingBox box1, BoundingBox box2)
     {
         int x1 = Math.Max(box1.X, box2.X);
