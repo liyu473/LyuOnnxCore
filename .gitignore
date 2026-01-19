@@ -17,3 +17,6 @@ TestResults/
 *.iml
 *.iws
 out/
+
+# ONNX Models
+OnnxModel/
