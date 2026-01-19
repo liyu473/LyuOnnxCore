@@ -311,7 +311,10 @@
                                     Margin="6,0"
                                     Command="{Binding SaveCroppedRegionsCommand}"
                                     Content="保存裁剪检测区域" />
-                                <Button Margin="6,0" Content="保存检测结果" />
+                                <Button
+                                    Margin="6,0"
+                                    Command="{Binding SaveDetectionResultCommand}"
+                                    Content="保存检测结果" />
                             </StackPanel>
                         </Grid>
                     </mah:SplitView>

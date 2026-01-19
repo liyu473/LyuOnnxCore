@@ -208,6 +208,7 @@ public partial class DetectionViewModel : ViewModelBase
                     _detectionResults = detections;
                     ResultImage = resultMat.ToBitmapSource();
                     SaveCroppedRegionsCommand.NotifyCanExecuteChanged();
+                    SaveDetectionResultCommand.NotifyCanExecuteChanged();
                 });
                 resultMat.Dispose();
             });
@@ -278,6 +279,76 @@ public partial class DetectionViewModel : ViewModelBase
     }
 
     private bool CanSaveCroppedRegions() =>
+        ResultImage is not null && _detectionResults.Count > 0;
+
+
+
+    [RelayCommand(CanExecute = nameof(CanSaveDetectionResult))]
+    private void SaveDetectionResult()
+    {
+        try
+        {
+            var dialog = new Microsoft.Win32.SaveFileDialog
+            {
+                Title = "保存检测结果",
+                Filter = "PNG图片 (*.png)|*.png|JPEG图片 (*.jpg;*.jpeg)|*.jpg;*.jpeg|BMP图片 (*.bmp)|*.bmp|所有文件 (*.*)|*.*",
+                DefaultExt = ".png",
+                FileName = $"detection_result_{DateTime.Now:yyyyMMdd_HHmmss}"
+            };
+
+            if (dialog.ShowDialog() == true)
+            {
+                using var image = Cv2.ImRead(ImagePath!);
+                
+                if (image.Empty())
+                {
+                    ShowMessage("无法加载原始图像", "错误");
+                    return;
+                }
+
+                var detectionOptions = new DetectionOptions
+                {
+                    ConfidenceThreshold = (float)ConfidenceThreshold,
+                    NmsThreshold = (float)NmsThreshold,
+                    FilterLabels = [.. SelelctedLabels],
+                    IsFilterOverlay = IsFilterOverlay,
+                    IsCrossClass = IsCrossClass,
+                    OverlayThreshold = (float)OverlayThreshold,
+                };
+
+                var drawOptions = new DrawOptions
+                {
+                    ShowConfidence = ShowConfidence,
+                    ShowLabel = ShowLabel,
+                    BoxThickness = BoxThickness,
+                    FontScale = FontScale,
+                    BoxColor = (BoxColor.B, BoxColor.G, BoxColor.R),
+                    TextColor = (TextColor.B, TextColor.G, TextColor.R),
+                };
+
+                Mat resultMat;
+                if (IsObbModel)
+                {
+                    resultMat = image.DrawOBBDetections(_detectionResults, drawOptions);
+                }
+                else
+                {
+                    resultMat = image.DrawDetections(_detectionResults, drawOptions);
+                }
+
+                Cv2.ImWrite(dialog.FileName, resultMat);
+                resultMat.Dispose();
+
+                ShowMessage($"检测结果已保存到:\n{dialog.FileName}\n\n检测到 {_detectionResults.Count} 个目标", "成功");
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowMessage($"保存失败: {ex.Message}", "错误");
+        }
+    }
+
+    private bool CanSaveDetectionResult() =>
         ResultImage is not null && _detectionResults.Count > 0;
 
     #endregion
