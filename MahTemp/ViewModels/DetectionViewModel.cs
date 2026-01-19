@@ -298,46 +298,8 @@ public partial class DetectionViewModel : ViewModelBase
 
             if (dialog.ShowDialog() == true)
             {
-                using var image = Cv2.ImRead(ImagePath!);
-                
-                if (image.Empty())
-                {
-                    ShowMessage("无法加载原始图像", "错误");
-                    return;
-                }
-
-                var detectionOptions = new DetectionOptions
-                {
-                    ConfidenceThreshold = (float)ConfidenceThreshold,
-                    NmsThreshold = (float)NmsThreshold,
-                    FilterLabels = [.. SelelctedLabels],
-                    IsFilterOverlay = IsFilterOverlay,
-                    IsCrossClass = IsCrossClass,
-                    OverlayThreshold = (float)OverlayThreshold,
-                };
-
-                var drawOptions = new DrawOptions
-                {
-                    ShowConfidence = ShowConfidence,
-                    ShowLabel = ShowLabel,
-                    BoxThickness = BoxThickness,
-                    FontScale = FontScale,
-                    BoxColor = (BoxColor.B, BoxColor.G, BoxColor.R),
-                    TextColor = (TextColor.B, TextColor.G, TextColor.R),
-                };
-
-                Mat resultMat;
-                if (IsObbModel)
-                {
-                    resultMat = image.DrawOBBDetections(_detectionResults, drawOptions);
-                }
-                else
-                {
-                    resultMat = image.DrawDetections(_detectionResults, drawOptions);
-                }
-
+                using var resultMat = ResultImage!.ToMat();
                 Cv2.ImWrite(dialog.FileName, resultMat);
-                resultMat.Dispose();
 
                 ShowMessage($"检测结果已保存到:\n{dialog.FileName}\n\n检测到 {_detectionResults.Count} 个目标", "成功");
             }
