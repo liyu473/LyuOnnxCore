@@ -40,7 +40,11 @@ public static class DetectionResultExtensions
                 if (!crossClass && d.LabelIndex != best.LabelIndex)
                     return true;
 
-                float iou = CalculateIoU(best.BoundingBox, d.BoundingBox);
+                // 只处理标准边界框
+                if (!best.BoundingBox.HasValue || !d.BoundingBox.HasValue)
+                    return true;
+
+                float iou = CalculateIoU(best.BoundingBox.Value, d.BoundingBox.Value);
                 return iou < overlapThreshold;
             })];
         }
@@ -78,8 +82,12 @@ public static class DetectionResultExtensions
                 if (!crossClass && detection.LabelIndex != other.LabelIndex)
                     continue;
 
+                // 只处理标准边界框
+                if (!detection.BoundingBox.HasValue || !other.BoundingBox.HasValue)
+                    continue;
+
                 // 检查 detection 是否被 other 包含
-                float containRatio = CalculateContainRatio(detection.BoundingBox, other.BoundingBox);
+                float containRatio = CalculateContainRatio(detection.BoundingBox.Value, other.BoundingBox.Value);
                 if (containRatio >= containThreshold)
                 {
                     // 如果被包含且置信度较低，则过滤掉
@@ -135,6 +143,63 @@ public static class DetectionResultExtensions
         params string[] labels)
     {
         return [.. detections.Where(d => !labels.Contains(d.LabelName))];
+    }
+
+    /// <summary>
+    /// 过滤被包含的小框（OBB 版本）
+    /// </summary>
+    /// <param name="detections">检测结果列表</param>
+    /// <param name="containThreshold">包含度阈值 (0-1)</param>
+    /// <param name="crossClass">是否跨类别过滤</param>
+    /// <returns>过滤后的检测结果列表</returns>
+    public static List<DetectionResult> FilterContainedOBB(
+        this List<DetectionResult> detections,
+        float containThreshold = 0.8f,
+        bool crossClass = false)
+    {
+        if (detections == null || detections.Count == 0)
+            return [];
+
+        var result = new List<DetectionResult>();
+
+        foreach (var detection in detections)
+        {
+            bool isContained = false;
+
+            foreach (var other in detections)
+            {
+                if (ReferenceEquals(detection, other))
+                    continue;
+
+                // 如果不跨类别过滤，只比较同类别的框
+                if (!crossClass && detection.LabelIndex != other.LabelIndex)
+                    continue;
+
+                // 只处理 OBB
+                if (!detection.OrientedBoundingBox.HasValue || !other.OrientedBoundingBox.HasValue)
+                    continue;
+
+                // 使用包围框近似计算包含比例
+                var box1 = detection.OrientedBoundingBox.Value.GetBoundingBox();
+                var box2 = other.OrientedBoundingBox.Value.GetBoundingBox();
+                
+                float containRatio = CalculateContainRatio(box1, box2);
+                if (containRatio >= containThreshold)
+                {
+                    // 如果被包含且置信度较低，则过滤掉
+                    if (detection.Confidence <= other.Confidence)
+                    {
+                        isContained = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!isContained)
+                result.Add(detection);
+        }
+
+        return result;
     }
 
     #region 私有方法

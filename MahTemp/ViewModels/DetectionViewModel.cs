@@ -34,12 +34,12 @@ public partial class DetectionViewModel : ViewModelBase
     public ObservableCollection<string> SelelctedLabels { get; } = [];
 
     [ObservableProperty]
-    public partial double ConfidenceThreshold { get; set; } = 0.01;
+    public partial double ConfidenceThreshold { get; set; } = 0.25;
 
     #region 检测设置
 
     [ObservableProperty]
-    public partial double NmsThreshold { get; set; } = 0.45;
+    public partial double NmsThreshold { get; set; } = 0.3;
 
     [ObservableProperty]
     public partial bool ShowConfidence { get; set; } = true;
@@ -155,7 +155,7 @@ public partial class DetectionViewModel : ViewModelBase
             TextColor = (TextColor.B, TextColor.G, TextColor.R),
         };
 
-        var resultMat = session.DetectAndDraw(
+        var resultMat = session.DetectOBBAndDraw(
             image,
             [.. LabesSource],
             detectionOptions,

@@ -34,4 +34,19 @@ public class DrawOptions
     /// 文字颜色 (B, G, R)
     /// </summary>
     public (int B, int G, int R) TextColor { get; set; } = (0, 255, 255);
+
+    /// <summary>
+    /// 是否使用中文字体（支持中文标签显示）
+    /// </summary>
+    public bool UseChineseFont { get; set; } = true;
+
+    /// <summary>
+    /// 中文字体名称（如 "微软雅黑", "SimHei", "Arial Unicode MS"）
+    /// </summary>
+    public string ChineseFontFamily { get; set; } = "微软雅黑";
+
+    /// <summary>
+    /// 中文字体大小（像素）
+    /// </summary>
+    public float ChineseFontSize { get; set; } = 20;
 }

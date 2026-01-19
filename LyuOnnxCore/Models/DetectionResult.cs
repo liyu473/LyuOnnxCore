@@ -21,7 +21,17 @@ public class DetectionResult
     public float Confidence { get; set; }
 
     /// <summary>
-    /// 边界框
+    /// 边界框（用于标准检测）
     /// </summary>
-    public BoundingBox BoundingBox { get; set; }
+    public BoundingBox? BoundingBox { get; set; }
+
+    /// <summary>
+    /// 旋转边界框（用于 OBB 检测）
+    /// </summary>
+    public OrientedBoundingBox? OrientedBoundingBox { get; set; }
+
+    /// <summary>
+    /// 是否为 OBB 检测结果
+    /// </summary>
+    public bool IsOBB => OrientedBoundingBox.HasValue;
 }

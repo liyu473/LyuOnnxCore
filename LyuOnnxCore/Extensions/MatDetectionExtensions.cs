@@ -1,4 +1,5 @@
 using LyuOnnxCore.Models;
+using LyuOnnxCore.Helpers;
 using Microsoft.ML.OnnxRuntime;
 using Microsoft.ML.OnnxRuntime.Tensors;
 using OpenCvSharp;
@@ -86,7 +87,10 @@ public static class MatDetectionExtensions
 
         foreach (var detection in detections)
         {
-            var box = detection.BoundingBox;
+            if (!detection.BoundingBox.HasValue)
+                continue;
+
+            var box = detection.BoundingBox.Value;
             var rect = new Rect(box.X, box.Y, box.Width, box.Height);
             var color = new Scalar(options.BoxColor.B, options.BoxColor.G, options.BoxColor.R);
 
@@ -111,16 +115,34 @@ public static class MatDetectionExtensions
             // 绘制标签
             if (!string.IsNullOrEmpty(label))
             {
-                var textColor = new Scalar(options.TextColor.B, options.TextColor.G, options.TextColor.R);
-                var textSize = Cv2.GetTextSize(label, HersheyFonts.HersheySimplex, options.FontScale, 1, out int baseline);
+                if (options.UseChineseFont)
+                {
+                    // 使用中文字体绘制
+                    var textColor = new Scalar(options.TextColor.B, options.TextColor.G, options.TextColor.R);
+                    ChineseTextHelper.PutChineseText(
+                        result,
+                        label,
+                        new Point(box.X, box.Y),
+                        options.ChineseFontFamily,
+                        options.ChineseFontSize,
+                        textColor,
+                        color,
+                        options.BoxThickness);
+                }
+                else
+                {
+                    // 使用英文字体绘制
+                    var textColor = new Scalar(options.TextColor.B, options.TextColor.G, options.TextColor.R);
+                    var textSize = Cv2.GetTextSize(label, HersheyFonts.HersheySimplex, options.FontScale, 1, out int baseline);
+                    
+                    // 绘制文本背景
+                    var textRect = new Rect(box.X, box.Y - textSize.Height - baseline - 5, textSize.Width + 5, textSize.Height + baseline + 5);
+                    Cv2.Rectangle(result, textRect, color, -1);
 
-                // 绘制文本背景
-                var textRect = new Rect(box.X, box.Y - textSize.Height - baseline - 5, textSize.Width + 5, textSize.Height + baseline + 5);
-                Cv2.Rectangle(result, textRect, color, -1);
-
-                // 绘制文本
-                Cv2.PutText(result, label, new Point(box.X + 2, box.Y - baseline - 2),
-                    HersheyFonts.HersheySimplex, options.FontScale, textColor, 1, LineTypes.AntiAlias);
+                    // 绘制文本
+                    Cv2.PutText(result, label, new Point(box.X + 2, box.Y - baseline - 2), 
+                        HersheyFonts.HersheySimplex, options.FontScale, textColor, 1, LineTypes.AntiAlias);
+                }
             }
         }
 
@@ -302,7 +324,11 @@ public static class MatDetectionExtensions
                 if (d.LabelIndex != best.LabelIndex)
                     return true;
 
-                float iou = CalculateIoU(best.BoundingBox, d.BoundingBox);
+                // 只处理标准边界框
+                if (!best.BoundingBox.HasValue || !d.BoundingBox.HasValue)
+                    return true;
+
+                float iou = CalculateIoU(best.BoundingBox.Value, d.BoundingBox.Value);
                 return iou < nmsThreshold;
             })];
         }
