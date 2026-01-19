@@ -84,7 +84,10 @@ public partial class DetectionViewModel : ViewModelBase
         ImagePath.IsNullOrWhiteSpace() ? null : new(new Uri(ImagePath));
 
     [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(SaveCroppedRegionsCommand))]
     public partial BitmapSource? ResultImage { get; set; }
+
+    private List<DetectionResult> _detectionResults = [];
 
     private void SelelctedLabels_CollectionChanged(
         object? sender,
@@ -154,7 +157,7 @@ public partial class DetectionViewModel : ViewModelBase
                 {
                     System.Windows.Application.Current.Dispatcher.Invoke(() =>
                     {
-                        System.Windows.MessageBox.Show("图像加载失败", "错误");
+                        ShowMessage("图像加载失败", "错误");
                     });
                     return;
                 }
@@ -180,28 +183,31 @@ public partial class DetectionViewModel : ViewModelBase
                 };
 
                 Mat resultMat;
+                List<DetectionResult> detections;
                 if (IsObbModel)
                 {
-                    resultMat = session.DetectOBBAndDraw(
+                    detections = session.DetectOBB(
                         image,
                         [.. LabesSource],
-                        detectionOptions,
-                        drawOptions
+                        detectionOptions
                     );
+                    resultMat = image.DrawOBBDetections(detections, drawOptions);
                 }
                 else
                 {
-                    resultMat = session.DetectAndDraw(
+                    detections = session.Detect(
                         image,
                         [.. LabesSource],
-                        detectionOptions,
-                        drawOptions
+                        detectionOptions
                     );
+                    resultMat = image.DrawDetections(detections, drawOptions);
                 }
                 
                 System.Windows.Application.Current.Dispatcher.Invoke(() =>
                 {
+                    _detectionResults = detections;
                     ResultImage = resultMat.ToBitmapSource();
+                    SaveCroppedRegionsCommand.NotifyCanExecuteChanged();
                 });
                 resultMat.Dispose();
             });
@@ -220,6 +226,59 @@ public partial class DetectionViewModel : ViewModelBase
         !ImagePath.IsNullOrWhiteSpace()
         && SelectedOnnxModel is not null
         && SelelctedLabels.Count > 0;
+
+    [RelayCommand(CanExecute = nameof(CanSaveCroppedRegions))]
+    private void SaveCroppedRegions()
+    {
+        try
+        {
+            var dialog = new Microsoft.Win32.OpenFolderDialog
+            {
+                Title = "选择保存裁剪区域的文件夹",
+                Multiselect = false
+            };
+
+            if (dialog.ShowDialog() == true)
+            {
+                using var image = Cv2.ImRead(ImagePath!);
+                
+                if (image.Empty())
+                {
+                    ShowMessage("无法加载原始图像", "错误");
+                    return;
+                }
+
+                var savedFiles = image.SaveCroppedRegions(_detectionResults, dialog.FolderName, out var errorMessages);
+
+                string message = $"检测到 {_detectionResults.Count} 个目标\n";
+                message += $"成功保存 {savedFiles.Count} 个裁剪区域\n";
+                
+                if (errorMessages.Count > 0)
+                {
+                    message += $"\n失败 {errorMessages.Count} 个:\n";
+                    message += string.Join("\n", errorMessages);                    
+                }
+                
+                message += $"\n\n保存位置:\n{dialog.FolderName}";
+
+                if (savedFiles.Count > 0)
+                {
+                    ShowMessage(message, errorMessages.Count > 0 ? "部分成功" : "成功");
+                }
+                else
+                {
+                    ShowMessage("所有裁剪都失败了\n\n" + string.Join("\n", errorMessages), "错误");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowMessage($"保存失败: {ex.Message}", "错误");
+        }
+    }
+
+    private bool CanSaveCroppedRegions() =>
+        ResultImage is not null && _detectionResults.Count > 0;
 
     #endregion
 }
