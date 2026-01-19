@@ -31,10 +31,10 @@ jobs:
             10.0.x
 
       - name: Restore
-        run: dotnet restore
+        run: dotnet restore LyuOnnxCore/LyuOnnxCore.csproj
 
       - name: Build
-        run: dotnet build -c Release --no-restore
+        run: dotnet build LyuOnnxCore/LyuOnnxCore.csproj -c Release --no-restore
 
       - name: Pack LyuOnnxCore
         run: dotnet pack LyuOnnxCore/LyuOnnxCore.csproj -c Release -o ./nupkgs
