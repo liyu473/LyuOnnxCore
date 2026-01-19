@@ -1,11 +1,27 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
-		<TargetFramework>net10.0-windows</TargetFramework>
+		<TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
 		<UseWPF>true</UseWPF>
 		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+
+
+		<PackageId>LyuOnnxCore</PackageId>
+		<Version>1.0.1</Version>
+		<Authors>Liyu</Authors>
+		<Description>为yolo转onnx模型的相关拓展</Description>
+		<PackageTags>onnx,opencv</PackageTags>
+
+		<!-- GitHub 仓库信息 -->
+		<RepositoryUrl>https://github.com/liyu473/LyuOnnxCore</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageProjectUrl>https://github.com/liyu473/LyuOnnxCore</PackageProjectUrl>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+
+		<!-- 打包时自动生成 nupkg -->
+		<GeneratePackageOnBuild>true</GeneratePackageOnBuild>
 	</PropertyGroup>
 
 	<ItemGroup>
