@@ -1,6 +1,3 @@
-using System.Collections.ObjectModel;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Extensions;
@@ -9,6 +6,9 @@ using LyuOnnxCore.Helpers;
 using LyuOnnxCore.Models;
 using Microsoft.ML.OnnxRuntime;
 using OpenCvSharp;
+using System.Collections.ObjectModel;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 
 namespace MahTemp.ViewModels;
 
@@ -137,10 +137,10 @@ public partial class DetectionViewModel : ViewModelBase
     }
 
     [ObservableProperty]
-    private bool isObbModel;
+    public partial bool IsObbModel { get; set; }
 
     [ObservableProperty]
-    private bool isDetecting;
+    public partial bool IsDetecting { get; set; }
 
     [RelayCommand(CanExecute = nameof(CanStartDetection))]
     private async Task StartDetection()
@@ -202,7 +202,7 @@ public partial class DetectionViewModel : ViewModelBase
                     );
                     resultMat = image.DrawDetections(detections, drawOptions);
                 }
-                
+
                 System.Windows.Application.Current.Dispatcher.Invoke(() =>
                 {
                     _detectionResults = detections;
@@ -242,7 +242,7 @@ public partial class DetectionViewModel : ViewModelBase
             if (dialog.ShowDialog() == true)
             {
                 using var image = Cv2.ImRead(ImagePath!);
-                
+
                 if (image.Empty())
                 {
                     ShowMessage("无法加载原始图像", "错误");
@@ -253,13 +253,13 @@ public partial class DetectionViewModel : ViewModelBase
 
                 string message = $"检测到 {_detectionResults.Count} 个目标\n";
                 message += $"成功保存 {savedFiles.Count} 个裁剪区域\n";
-                
+
                 if (errorMessages.Count > 0)
                 {
                     message += $"\n失败 {errorMessages.Count} 个:\n";
-                    message += string.Join("\n", errorMessages);                    
+                    message += string.Join("\n", errorMessages);
                 }
-                
+
                 message += $"\n\n保存位置:\n{dialog.FolderName}";
 
                 if (savedFiles.Count > 0)

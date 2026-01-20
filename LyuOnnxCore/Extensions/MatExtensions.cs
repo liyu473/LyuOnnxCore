@@ -111,7 +111,7 @@ public static class MatExtensions
         out List<string> errorMessages,
         string fileNamePrefix = "crop")
     {
-        errorMessages = new List<string>();
+        errorMessages = [];
         
         if (image == null || image.Empty())
             throw new ArgumentException("图像不能为空", nameof(image));

@@ -2,12 +2,14 @@ using OpenCvSharp;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
+using System.Runtime.Versioning;
 
 namespace LyuOnnxCore.Helpers;
 
 /// <summary>
 /// 支持中文的文本绘制辅助类
 /// </summary>
+[SupportedOSPlatform("windows")]
 public static class ChineseTextHelper
 {
     /// <summary>
