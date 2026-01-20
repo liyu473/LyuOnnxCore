@@ -41,7 +41,15 @@ jobs:
 
       - name: Push LyuOnnxCore to NuGet
         if: ${{ !inputs.dry_run }}
-        run: dotnet nuget push ./nupkgs/LyuOnnxCore.*.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+        shell: pwsh
+        run: |
+          $nupkg = Get-ChildItem -Path ./nupkgs -Filter "LyuOnnxCore.*.nupkg" | Select-Object -First 1
+          if ($nupkg) {
+            dotnet nuget push $nupkg.FullName --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+          } else {
+            Write-Error "No nupkg file found in ./nupkgs directory"
+            exit 1
+          }
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
