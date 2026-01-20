@@ -9,7 +9,7 @@
 
 
 		<PackageId>LyuOnnxCore</PackageId>
-		<Version>1.0.1</Version>
+		<Version>1.0.2</Version>
 		<Authors>Liyu</Authors>
 		<Description>为yolo转onnx模型的相关拓展</Description>
 		<PackageTags>onnx,opencv</PackageTags>
