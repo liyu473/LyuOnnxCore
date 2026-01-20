@@ -74,6 +74,8 @@ public partial class App : Application
         services.RegisterViews();
         services.RegisterViewModels();
 
+        services.AddSingleton<ICvService, CvService>();
+
         Services = services.BuildServiceProvider();
 
         _logger = GetService<ILogger<App>>();

@@ -1,8 +1,12 @@
-﻿using System.Windows.Media.Imaging;
+﻿using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.Windows.Data;
+using System.Windows.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Extensions;
 using LyuOnnxCore.Extensions;
+using MahTemp.Model;
 using OpenCvSharp;
 
 namespace MahTemp.ViewModels;
@@ -31,4 +35,7 @@ public partial class OpenCvViewModel : ViewModelBase
             ImagePath = dialog.FileName;
         }
     }
+
+    public BindingList<CvDetectionItem> FlowItems { get; } = [];
+    
 }
