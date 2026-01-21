@@ -1,4 +1,5 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
+﻿using System.ComponentModel;
+using CommunityToolkit.Mvvm.ComponentModel;
 using MahTemp.Extension;
 using OpenCvSharp;
 
@@ -7,6 +8,9 @@ namespace MahTemp.Model;
 public partial class CvDetectionItem : ObservableObject
 {
     [ObservableProperty]
+    public partial int Index { get; set; }
+
+    [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ResultMat))]
     public partial Mat? PreviousMat { get; set; }
 
@@ -14,6 +18,16 @@ public partial class CvDetectionItem : ObservableObject
     [NotifyPropertyChangedFor(nameof(ResultMat))]
     public partial CvSettings? CvSetting { get; set; }
 
-    public Mat? ResultMat =>
-        (PreviousMat == null || CvSetting == null) ? null : PreviousMat.GetResult(CvSetting);
+    partial void OnCvSettingChanged(CvSettings? oldValue, CvSettings? newValue)
+    {
+        oldValue?.PropertyChanged -= OnCvSettingChanged;
+        newValue?.PropertyChanged += OnCvSettingChanged;
+    }
+
+    private void OnCvSettingChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        OnPropertyChanged(nameof(ResultMat));
+    }
+
+    public Mat? ResultMat => PreviousMat?.GetResult(CvSetting);
 }

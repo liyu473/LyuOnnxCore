@@ -1,6 +1,4 @@
-﻿using System.Collections.ObjectModel;
-using System.ComponentModel;
-using System.Windows.Data;
+﻿using System.ComponentModel;
 using System.Windows.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -13,6 +11,33 @@ namespace MahTemp.ViewModels;
 
 public partial class OpenCvViewModel : ViewModelBase
 {
+    public OpenCvViewModel()
+    {
+        FlowItems.ListChanged += FlowItems_ListChanged;
+    }
+
+    private void FlowItems_ListChanged(object? sender, ListChangedEventArgs e)
+    {
+        switch (e.ListChangedType)
+        {
+            case ListChangedType.ItemAdded:
+                //nothing
+                break;
+
+            case ListChangedType.ItemDeleted:
+                //nothing
+                break;
+
+            case ListChangedType.ItemChanged:
+                RefreshSelfNotifyNext(sender, e);
+                break;
+
+            case ListChangedType.Reset:
+                //nothing
+                break;
+        }
+    }
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(PreviousImage))]
     public partial string ImagePath { get; set; } = string.Empty;
@@ -33,9 +58,29 @@ public partial class OpenCvViewModel : ViewModelBase
         if (dialog.ShowDialog() == true)
         {
             ImagePath = dialog.FileName;
+            FlowItems.Clear();
+            FlowItems.Add(new CvDetectionItem { Index = 1,PreviousMat = Cv2.ImRead(ImagePath)});
         }
     }
 
     public BindingList<CvDetectionItem> FlowItems { get; } = [];
-    
+
+    private void RefreshSelfNotifyNext(object? sender, ListChangedEventArgs e)
+    {
+        var item = FlowItems[e.NewIndex];
+        if (e.ListChangedType == ListChangedType.ItemChanged && e.PropertyDescriptor?.Name == nameof(CvDetectionItem.ResultMat))
+        {
+            if (e.NewIndex < FlowItems.Count - 1)
+            {
+                FlowItems[e.NewIndex + 1].PreviousMat = item.ResultMat;
+            }
+        }
+        else if(e.ListChangedType == ListChangedType.ItemAdded)
+        {
+            if (e.NewIndex != 0)
+            {
+                item.PreviousMat = FlowItems[e.NewIndex - 1].ResultMat;
+            }
+        }
+    }
 }

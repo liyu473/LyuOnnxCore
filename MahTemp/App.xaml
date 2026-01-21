@@ -20,6 +20,7 @@
             <converters:InverseBoolConverter x:Key="InverseBoolConverter" />
             <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
             <converters:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter" />
+            <converters:MatToBitmapSourceConverter x:Key="MatToBitmapSourceConverter" />
 
             <Style
                 x:Key="MahApps.Styles.MetroHeader.Horizontal"
