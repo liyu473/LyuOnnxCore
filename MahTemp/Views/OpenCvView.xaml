@@ -8,42 +8,72 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:viewmodels="clr-namespace:MahTemp.ViewModels"
     d:DataContext="{d:DesignInstance Type=viewmodels:OpenCvViewModel}"
-    d:DesignHeight="450"
-    d:DesignWidth="800"
     mc:Ignorable="d">
     <UserControl.Resources>
         <Style BasedOn="{StaticResource MahApps.Styles.Button.Flat}" TargetType="Button" />
     </UserControl.Resources>
-    <Grid lyu:GridHelper.RowDefinitions="Auto,*,*">
+    <Grid lyu:GridHelper.RowDefinitions="Auto,2*,*">
         <lyu:SimpleStackPanel Orientation="Horizontal" Spacing="12">
             <Button Command="{Binding LoadImageCommand}" Content="导入图片" />
         </lyu:SimpleStackPanel>
-        <ScrollViewer Grid.Row="1">
-            <ItemsControl ItemsSource="{Binding FlowItems}">
-                <ItemsControl.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <UniformGrid Columns="3" />
-                    </ItemsPanelTemplate>
-                </ItemsControl.ItemsPanel>
 
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                        <Border Padding="6" Background="Transparent">
-                            <lyu:SimpleStackPanel Margin="16,10" Spacing="8">
-                                <Image Source="{Binding ResultMat, Converter={StaticResource MatToBitmapSourceConverter}}" />
-                                <TextBlock
-                                    HorizontalAlignment="Center"
-                                    Foreground="{StaticResource MahApps.Brushes.Accent}"
-                                    Text="{Binding Index}" />
-                            </lyu:SimpleStackPanel>
-                        </Border>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
-        </ScrollViewer>
+        <ListBox
+            Grid.Row="1"
+            Background="Transparent"
+            ItemsSource="{Binding FlowItems}"
+            ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+            ScrollViewer.VerticalScrollBarVisibility="Auto">
+            <ListBox.ItemContainerStyle>
+                <Style TargetType="ListBoxItem">
+                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                    <Setter Property="VerticalContentAlignment" Value="Stretch" />
+                    <Setter Property="Padding" Value="0" />
+                    <Setter Property="BorderThickness" Value="0" />
+                    <Setter Property="Background" Value="Transparent" />
+                    <Setter Property="FocusVisualStyle" Value="{x:Null}" />
 
-        <Grid Grid.Row="2">
+                    <Style.Triggers>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter Property="Background" Value="{StaticResource MahApps.Brushes.Accent3}" />
+                        </Trigger>
 
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter Property="Background" Value="{StaticResource MahApps.Brushes.Accent4}" />
+                        </Trigger>
+                    </Style.Triggers>
+                </Style>
+            </ListBox.ItemContainerStyle>
+
+            <ListBox.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <UniformGrid Columns="3" />
+                </ItemsPanelTemplate>
+            </ListBox.ItemsPanel>
+
+            <ListBox.ItemTemplate>
+                <DataTemplate>
+                    <Border Padding="6" Background="Transparent">
+                        <lyu:SimpleStackPanel Margin="16,10" Spacing="8">
+                            <Image Source="{Binding ResultMat, Converter={StaticResource MatToBitmapSourceConverter}}" />
+                            <TextBlock
+                                HorizontalAlignment="Center"
+                                FontWeight="SemiBold"
+                                Text="{Binding Index}" />
+                        </lyu:SimpleStackPanel>
+                    </Border>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+
+        <Grid
+            Grid.Row="2"
+            Margin="0,10"
+            lyu:GridHelper.ColumnDefinitions="Auto,*">
+            <lyu:SimpleStackPanel Spacing="24">
+                <Button Command="{Binding AddItemCommand}" Content="增加步骤" />
+                <Button Content="所选步骤后增加" />
+                <Button Content="删除所选步骤" Foreground="Red" />
+            </lyu:SimpleStackPanel>
         </Grid>
     </Grid>
 </UserControl>

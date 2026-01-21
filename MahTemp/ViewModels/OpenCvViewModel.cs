@@ -1,9 +1,7 @@
 ﻿using System.ComponentModel;
-using System.Windows.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Extensions;
-using LyuOnnxCore.Extensions;
 using MahTemp.Model;
 using OpenCvSharp;
 
@@ -21,7 +19,14 @@ public partial class OpenCvViewModel : ViewModelBase
         switch (e.ListChangedType)
         {
             case ListChangedType.ItemAdded:
-                //nothing
+                if (e.NewIndex >= 0 && e.NewIndex < FlowItems.Count)
+                {
+                    var item = FlowItems[e.NewIndex];
+                    if (e.NewIndex > 0)
+                    {
+                        item.PreviousMat = FlowItems[e.NewIndex - 1].ResultMat;
+                    }
+                }
                 break;
 
             case ListChangedType.ItemDeleted:
@@ -29,7 +34,17 @@ public partial class OpenCvViewModel : ViewModelBase
                 break;
 
             case ListChangedType.ItemChanged:
-                RefreshSelfNotifyNext(sender, e);
+                if (e.NewIndex >= 0 && e.NewIndex < FlowItems.Count)
+                {
+                    var item = FlowItems[e.NewIndex];
+                    if (e.PropertyDescriptor?.Name == nameof(CvDetectionItem.ResultMat))
+                    {
+                        if (e.NewIndex < FlowItems.Count - 1)
+                        {
+                            FlowItems[e.NewIndex + 1].PreviousMat = item.ResultMat;
+                        }
+                    }
+                }
                 break;
 
             case ListChangedType.Reset:
@@ -39,11 +54,8 @@ public partial class OpenCvViewModel : ViewModelBase
     }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(PreviousImage))]
+    [NotifyCanExecuteChangedFor(nameof(AddItemCommand))]
     public partial string ImagePath { get; set; } = string.Empty;
-
-    public BitmapSource? PreviousImage =>
-        ImagePath.IsNullOrEmpty() ? null : Cv2.ImRead(ImagePath).ToBitmapSource();
 
     [RelayCommand]
     private void LoadImage()
@@ -59,28 +71,20 @@ public partial class OpenCvViewModel : ViewModelBase
         {
             ImagePath = dialog.FileName;
             FlowItems.Clear();
-            FlowItems.Add(new CvDetectionItem { Index = 1,PreviousMat = Cv2.ImRead(ImagePath)});
+            FlowItems.Add(new CvDetectionItem { Index = 1, PreviousMat = Cv2.ImRead(ImagePath) });
         }
     }
 
     public BindingList<CvDetectionItem> FlowItems { get; } = [];
 
-    private void RefreshSelfNotifyNext(object? sender, ListChangedEventArgs e)
+    [ObservableProperty]
+    public partial CvDetectionItem? SelectedFlowItem { get; set; }
+
+    private bool IsLoadImage() => !ImagePath.IsNullOrEmpty();
+
+    [RelayCommand(CanExecute = nameof(IsLoadImage))]
+    private void AddItem()
     {
-        var item = FlowItems[e.NewIndex];
-        if (e.ListChangedType == ListChangedType.ItemChanged && e.PropertyDescriptor?.Name == nameof(CvDetectionItem.ResultMat))
-        {
-            if (e.NewIndex < FlowItems.Count - 1)
-            {
-                FlowItems[e.NewIndex + 1].PreviousMat = item.ResultMat;
-            }
-        }
-        else if(e.ListChangedType == ListChangedType.ItemAdded)
-        {
-            if (e.NewIndex != 0)
-            {
-                item.PreviousMat = FlowItems[e.NewIndex - 1].ResultMat;
-            }
-        }
+        FlowItems.Add(new CvDetectionItem { Index = FlowItems.Count + 1 });
     }
 }
