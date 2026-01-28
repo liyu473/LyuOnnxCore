@@ -1,4 +1,4 @@
-﻿<Application
+<Application
     x:Class="MahTemp.App"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -17,6 +17,7 @@
 
             <!--  Converters  -->
             <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter" />
+            <converters:InvertedNullToVisibilityConverter x:Key="InvertedNullToVisibilityConverter" />
             <converters:InverseBoolConverter x:Key="InverseBoolConverter" />
             <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
             <converters:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter" />

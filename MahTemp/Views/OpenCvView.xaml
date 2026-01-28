@@ -1,4 +1,4 @@
-﻿<UserControl
+<UserControl
     x:Class="MahTemp.Views.OpenCvView"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -7,6 +7,7 @@
     xmlns:lyu="http://schemas.lyuwpfhelper.com/winfx/xaml"
     xmlns:mah="http://metro.mahapps.com/winfx/xaml/controls"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:model="clr-namespace:MahTemp.Model"
     xmlns:viewmodels="clr-namespace:MahTemp.ViewModels"
     d:DataContext="{d:DesignInstance Type=viewmodels:OpenCvViewModel}"
     mc:Ignorable="d">
@@ -14,7 +15,10 @@
         <Style BasedOn="{StaticResource MahApps.Styles.Button.Flat}" TargetType="Button" />
     </UserControl.Resources>
     <Grid lyu:GridHelper.RowDefinitions="Auto,2*,*">
-        <lyu:SimpleStackPanel Orientation="Horizontal" Spacing="12">
+        <lyu:SimpleStackPanel
+            Margin="0,0,0,8"
+            Orientation="Horizontal"
+            Spacing="12">
             <Button Command="{Binding LoadImageCommand}" Content="导入图片" />
         </lyu:SimpleStackPanel>
 
@@ -23,7 +27,8 @@
             Background="Transparent"
             ItemsSource="{Binding FlowItems}"
             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-            ScrollViewer.VerticalScrollBarVisibility="Auto">
+            ScrollViewer.VerticalScrollBarVisibility="Auto"
+            SelectedItem="{Binding SelectedFlowItem}">
             <ListBox.ItemContainerStyle>
                 <Style TargetType="ListBoxItem">
                     <Setter Property="HorizontalContentAlignment" Value="Stretch" />
@@ -72,13 +77,131 @@
             lyu:GridHelper.ColumnDefinitions="Auto,*">
             <lyu:SimpleStackPanel Spacing="24">
                 <Button Command="{Binding AddItemCommand}" Content="增加步骤" />
-                <Button Content="所选步骤后增加" />
-                <Button Content="删除所选步骤" Foreground="Red" />
+                <Button
+                    Command="{Binding RemoveStepCommand}"
+                    Content="删除所选步骤"
+                    Foreground="Red" />
             </lyu:SimpleStackPanel>
 
-            <Grid Grid.Column="1">
-                
-            </Grid>
+
+            <ScrollViewer
+                Grid.Column="1"
+                Margin="20,0,0,0"
+                VerticalScrollBarVisibility="Auto">
+                <TabControl Background="Transparent">
+                    <TabItem mah:TabControlHelper.Transition="LeftReplace" Header="轮廓检测">
+                        <StackPanel DataContext="{Binding SelectedFlowItem.CvSetting}">
+                            <WrapPanel Margin="0,10,0,0" Visibility="{Binding Converter={StaticResource InvertedNullToVisibilityConverter}}">
+                                <GroupBox
+                                    Margin="5"
+                                    Padding="10"
+                                    Header="预处理选项">
+                                    <lyu:SimpleStackPanel Spacing="8">
+                                        <lyu:SimpleStackPanel Orientation="Horizontal" Spacing="8">
+                                            <TextBlock VerticalAlignment="Center" Text="灰度转换方法:" />
+                                            <ComboBox Width="150" SelectedItem="{Binding GrayMethod}">
+                                                <ComboBox.ItemsSource>
+                                                    <x:Array Type="{x:Type model:GrayConversionMethod}">
+                                                        <model:GrayConversionMethod>BGR2GRAY</model:GrayConversionMethod>
+                                                        <model:GrayConversionMethod>BlueChannel</model:GrayConversionMethod>
+                                                        <model:GrayConversionMethod>GreenChannel</model:GrayConversionMethod>
+                                                        <model:GrayConversionMethod>RedChannel</model:GrayConversionMethod>
+                                                        <model:GrayConversionMethod>Average</model:GrayConversionMethod>
+                                                        <model:GrayConversionMethod>MaxValue</model:GrayConversionMethod>
+                                                        <model:GrayConversionMethod>MinValue</model:GrayConversionMethod>
+                                                    </x:Array>
+                                                </ComboBox.ItemsSource>
+                                            </ComboBox>
+                                        </lyu:SimpleStackPanel>
+                                        <TextBlock
+                                            FontSize="10"
+                                            FontStyle="Italic"
+                                            Foreground="Gray"
+                                            Text="注意：轮廓检测会自动转换为灰度图"
+                                            TextWrapping="Wrap" />
+                                        <CheckBox Content="应用高斯模糊" IsChecked="{Binding ApplyGaussianBlur}" />
+                                        <lyu:SimpleStackPanel Orientation="Horizontal" Spacing="8">
+                                            <TextBlock VerticalAlignment="Center" Text="高斯模糊核大小:" />
+                                            <mah:NumericUpDown
+                                                Width="100"
+                                                Maximum="31"
+                                                Minimum="1"
+                                                Value="{Binding GaussianBlurKernelSize}" />
+                                        </lyu:SimpleStackPanel>
+                                    </lyu:SimpleStackPanel>
+                                </GroupBox>
+
+                                <!--  二值化参数  -->
+                                <GroupBox
+                                    Margin="5"
+                                    Padding="10"
+                                    Header="二值化参数">
+                                    <lyu:SimpleStackPanel Spacing="8">
+                                        <lyu:SimpleStackPanel Orientation="Horizontal" Spacing="8">
+                                            <TextBlock VerticalAlignment="Center" Text="阈值:" />
+                                            <mah:NumericUpDown
+                                                Width="100"
+                                                Maximum="255"
+                                                Minimum="0"
+                                                Value="{Binding ThresholdValue}" />
+                                        </lyu:SimpleStackPanel>
+                                        <lyu:SimpleStackPanel Orientation="Horizontal" Spacing="8">
+                                            <TextBlock VerticalAlignment="Center" Text="最大值:" />
+                                            <mah:NumericUpDown
+                                                Width="100"
+                                                Maximum="255"
+                                                Minimum="0"
+                                                Value="{Binding ThresholdMaxValue}" />
+                                        </lyu:SimpleStackPanel>
+                                    </lyu:SimpleStackPanel>
+                                </GroupBox>
+
+                                <!--  轮廓检测参数  -->
+                                <GroupBox
+                                    Margin="5"
+                                    Padding="10"
+                                    Header="轮廓检测参数">
+                                    <lyu:SimpleStackPanel Spacing="8">
+                                        <lyu:SimpleStackPanel Orientation="Horizontal" Spacing="8">
+                                            <TextBlock VerticalAlignment="Center" Text="最小轮廓面积:" />
+                                            <mah:NumericUpDown
+                                                Width="100"
+                                                Maximum="10000"
+                                                Minimum="0"
+                                                Value="{Binding MinContourArea}" />
+                                        </lyu:SimpleStackPanel>
+                                    </lyu:SimpleStackPanel>
+                                </GroupBox>
+
+                                <!--  绘制参数  -->
+                                <GroupBox
+                                    Margin="5"
+                                    Padding="10"
+                                    Header="绘制参数">
+                                    <lyu:SimpleStackPanel Spacing="8">
+                                        <lyu:SimpleStackPanel Orientation="Horizontal" Spacing="8">
+                                            <TextBlock VerticalAlignment="Center" Text="轮廓线条粗细:" />
+                                            <mah:NumericUpDown
+                                                Width="100"
+                                                Maximum="10"
+                                                Minimum="1"
+                                                Value="{Binding ContourThickness}" />
+                                        </lyu:SimpleStackPanel>
+                                        <CheckBox Content="绘制轮廓索引" IsChecked="{Binding DrawContourIndex}" />
+                                    </lyu:SimpleStackPanel>
+                                </GroupBox>
+                            </WrapPanel>
+
+                            <TextBlock
+                                Margin="0,20,0,0"
+                                FontStyle="Italic"
+                                Foreground="Gray"
+                                Text="请先选择一个步骤并点击 设置轮廓检测 按钮"
+                                Visibility="{Binding Converter={StaticResource NullToVisibilityConverter}}" />
+                        </StackPanel>
+                    </TabItem>
+                </TabControl>
+            </ScrollViewer>
         </Grid>
     </Grid>
 </UserControl>

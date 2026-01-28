@@ -1,4 +1,4 @@
-﻿using System.ComponentModel;
+using System.ComponentModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Extensions;
@@ -51,6 +51,8 @@ public partial class OpenCvViewModel : ViewModelBase
                 //nothing
                 break;
         }
+
+        AddItemCommand.NotifyCanExecuteChanged();
     }
 
     [ObservableProperty]
@@ -78,13 +80,40 @@ public partial class OpenCvViewModel : ViewModelBase
     public BindingList<CvDetectionItem> FlowItems { get; } = [];
 
     [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(RemoveStepCommand))]
     public partial CvDetectionItem? SelectedFlowItem { get; set; }
 
-    private bool IsLoadImage() => !ImagePath.IsNullOrEmpty();
+    private bool IsLoadImage() => !ImagePath.IsNullOrEmpty() && FlowItems.Count > 0;
 
     [RelayCommand(CanExecute = nameof(IsLoadImage))]
     private void AddItem()
     {
         FlowItems.Add(new CvDetectionItem { Index = FlowItems.Count + 1 });
+    }
+
+    private bool CanRemoveStep() => SelectedFlowItem != null;
+
+    [RelayCommand(CanExecute = nameof(CanRemoveStep))]
+    private void RemoveStep()
+    {
+        if (SelectedFlowItem == null) return;
+
+        int index = FlowItems.IndexOf(SelectedFlowItem);
+        if (index >= 0)
+        {
+            FlowItems.RemoveAt(index);
+            
+            // 重新编号
+            for (int i = 0; i < FlowItems.Count; i++)
+            {
+                FlowItems[i].Index = i + 1;
+            }
+
+            // 重新连接处理链
+            for (int i = 1; i < FlowItems.Count; i++)
+            {
+                FlowItems[i].PreviousMat = FlowItems[i - 1].ResultMat;
+            }
+        }
     }
 }
