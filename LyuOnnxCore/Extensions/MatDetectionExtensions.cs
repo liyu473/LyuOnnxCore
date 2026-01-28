@@ -88,6 +88,7 @@ public static class MatDetectionExtensions
         // 克隆图像以避免修改原图
         var result = image.Clone();
 
+        int index = 0;
         foreach (var detection in detections)
         {
             if (!detection.BoundingBox.HasValue)
@@ -100,20 +101,26 @@ public static class MatDetectionExtensions
             // 绘制边界框
             Cv2.Rectangle(result, rect, color, options.BoxThickness);
 
-            // 准备标签文本
+            // 准备标签文本（添加索引）
             string label = "";
             if (options.ShowLabel && options.ShowConfidence)
             {
-                label = $"{detection.LabelName} {detection.Confidence:P0}";
+                label = $"[{index}] {detection.LabelName} {detection.Confidence:P0}";
             }
             else if (options.ShowLabel)
             {
-                label = detection.LabelName;
+                label = $"[{index}] {detection.LabelName}";
             }
             else if (options.ShowConfidence)
             {
-                label = $"{detection.Confidence:P0}";
+                label = $"[{index}] {detection.Confidence:P0}";
             }
+            else
+            {
+                label = $"[{index}]";
+            }
+            
+            index++;
 
             // 绘制标签
             if (!string.IsNullOrEmpty(label))

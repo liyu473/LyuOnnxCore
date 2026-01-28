@@ -88,6 +88,7 @@ public static class MatObbDetectionExtensions
         // 克隆图像以避免修改原图
         var result = image.Clone();
 
+        int index = 0;
         foreach (var detection in detections)
         {
             if (!detection.IsOBB || !detection.OrientedBoundingBox.HasValue)
@@ -105,20 +106,28 @@ public static class MatObbDetectionExtensions
                 Cv2.Line(result, pt1, pt2, color, options.BoxThickness, LineTypes.AntiAlias);
             }
 
-            // 准备标签文本
+            // 准备标签文本（添加索引和旋转角度）
             string label = "";
+            string angleInfo = $"{obb.AngleDegrees:F1}°";
+            
             if (options.ShowLabel && options.ShowConfidence)
             {
-                label = $"{detection.LabelName} {detection.Confidence:P0}";
+                label = $"[{index}] {detection.LabelName} {detection.Confidence:P0} {angleInfo}";
             }
             else if (options.ShowLabel)
             {
-                label = detection.LabelName;
+                label = $"[{index}] {detection.LabelName} {angleInfo}";
             }
             else if (options.ShowConfidence)
             {
-                label = $"{detection.Confidence:P0}";
+                label = $"[{index}] {detection.Confidence:P0} {angleInfo}";
             }
+            else
+            {
+                label = $"[{index}] {angleInfo}";
+            }
+            
+            index++;
 
             // 绘制标签
             if (!string.IsNullOrEmpty(label))

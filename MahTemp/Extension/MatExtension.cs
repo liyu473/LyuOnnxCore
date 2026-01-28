@@ -12,5 +12,5 @@ public static class MatExtension
     {
         if(setting is null) return mat;
         return CvService.ApplySetting(mat, setting);
-    }
+    }   
 }
