@@ -10,149 +10,166 @@ public partial class CvService : ICvService
         if (mat == null || mat.Empty())
             return mat;
 
-        return setting.ProcessType switch
+        Mat resultMat = mat;
+
+        // 1. 灰度化（如果启用）
+        if (setting.IsApplyGrayscale && resultMat.Channels() > 1)
         {
-            CvProcessType.ContourDetection => ApplyContourDetection(mat, setting),
-            CvProcessType.None => mat,
-            _ => mat
-        };
+            resultMat = ApplyGrayscale(resultMat);
+        }
+
+        // 2. 高斯模糊（如果启用）
+        if (setting.GaussianBlur?.IsEnabled == true)
+        {
+            resultMat = ApplyGaussianBlur(resultMat, setting.GaussianBlur);
+        }
+
+        // 3. 二值化（如果启用）
+        if (setting.Threshold?.IsEnabled == true)
+        {
+            resultMat = ApplyThreshold(resultMat, setting.Threshold);
+        }
+
+        // 4. 查找轮廓（如果启用）
+        if (setting.FindContours?.IsEnabled == true)
+        {
+            resultMat = ApplyFindContours(resultMat, setting.FindContours);
+        }
+
+        // 5. 绘制轮廓（如果启用）
+        if (setting.DrawContours?.IsEnabled == true)
+        {
+            resultMat = ApplyDrawContours(resultMat, setting.DrawContours);
+        }
+
+        return resultMat;
     }
 
     /// <summary>
-    /// 应用轮廓检测
+    /// 应用灰度化（标准BGR2GRAY方法）
     /// </summary>
-    private Mat ApplyContourDetection(Mat sourceMat, CvSettings setting)
+    private Mat ApplyGrayscale(Mat sourceMat)
     {
-        // 创建输出图像（彩色，用于绘制轮廓）
-        Mat resultMat = sourceMat.Clone();
-        Mat processedMat = sourceMat.Clone();
+        if (sourceMat.Channels() == 1)
+            return sourceMat;
 
-        try
+        Mat grayMat = new Mat();
+        Cv2.CvtColor(sourceMat, grayMat, ColorConversionCodes.BGR2GRAY);
+        return grayMat;
+    }
+
+    /// <summary>
+    /// 应用高斯模糊
+    /// </summary>
+    private Mat ApplyGaussianBlur(Mat sourceMat, GaussianBlurSettings setting)
+    {
+        Mat resultMat = new Mat();
+        int kernelSize = setting.KernelSize;
+        
+        // 确保核大小为奇数
+        if (kernelSize % 2 == 0)
+            kernelSize++;
+
+        Cv2.GaussianBlur(sourceMat, resultMat, new Size(kernelSize, kernelSize), 
+            setting.SigmaX, setting.SigmaY);
+
+        return resultMat;
+    }
+
+    /// <summary>
+    /// 应用二值化
+    /// </summary>
+    private Mat ApplyThreshold(Mat sourceMat, ThresholdSettings setting)
+    {
+        Mat resultMat = new Mat();
+        Cv2.Threshold(sourceMat, resultMat, setting.ThresholdValue, 
+            setting.MaxValue, setting.Type);
+
+        return resultMat;
+    }
+
+    /// <summary>
+    /// 应用查找轮廓（返回二值图，轮廓用白色显示）
+    /// </summary>
+    private Mat ApplyFindContours(Mat sourceMat, FindContoursSettings setting)
+    {
+        // 查找轮廓需要二值图
+        if (sourceMat.Channels() > 1)
         {
-            // 1. 转换为灰度图（轮廓检测必须使用灰度图）
-            if (processedMat.Channels() > 1)
+            throw new InvalidOperationException("FindContours requires a binary (grayscale) image. Please enable Grayscale and Threshold first.");
+        }
+
+        // 查找轮廓
+        Cv2.FindContours(sourceMat, out Point[][] contours, out HierarchyIndex[] hierarchy,
+            setting.RetrievalMode, setting.ApproximationMode);
+
+        // 过滤轮廓
+        var filteredContours = contours
+            .Where(contour => Cv2.ContourArea(contour) >= setting.MinContourArea)
+            .ToArray();
+
+        // 创建空白图像来显示找到的轮廓
+        Mat resultMat = Mat.Zeros(sourceMat.Size(), MatType.CV_8UC1);
+        
+        // 在结果图上绘制轮廓（白色）以便可视化
+        for (int i = 0; i < filteredContours.Length; i++)
+        {
+            Cv2.DrawContours(resultMat, filteredContours, i, Scalar.White, 1);
+        }
+
+        return resultMat;
+    }
+
+    /// <summary>
+    /// 应用绘制轮廓
+    /// </summary>
+    private Mat ApplyDrawContours(Mat sourceMat, DrawContoursSettings setting)
+    {
+        Mat resultMat = sourceMat.Clone();
+        
+        // 如果是灰度图，需要先查找轮廓
+        if (sourceMat.Channels() == 1)
+        {
+            Cv2.FindContours(sourceMat.Clone(), out Point[][] contours, out HierarchyIndex[] hierarchy,
+                RetrievalModes.External, ContourApproximationModes.ApproxSimple);
+
+            // 如果原图是灰度图，转换为彩色以便绘制彩色轮廓
+            resultMat = new Mat();
+            Cv2.CvtColor(sourceMat, resultMat, ColorConversionCodes.GRAY2BGR);
+
+            // 绘制轮廓
+            if (setting.ContourIndex == -1)
             {
-                processedMat = ConvertToGray(processedMat, setting.GrayMethod);
-            }
-
-            // 2. 高斯模糊（如果需要）
-            if (setting.ApplyGaussianBlur)
-            {
-                int kernelSize = setting.GaussianBlurKernelSize;
-                // 确保核大小为奇数
-                if (kernelSize % 2 == 0)
-                    kernelSize++;
-                
-                Cv2.GaussianBlur(processedMat, processedMat, new Size(kernelSize, kernelSize), 0);
-            }
-
-            // 3. 二值化（只能应用于灰度图）
-            Cv2.Threshold(processedMat, processedMat, 
-                setting.ThresholdValue, 
-                setting.ThresholdMaxValue, 
-                setting.ThresholdType);
-
-            // 4. 查找轮廓
-            Cv2.FindContours(processedMat, out Point[][] contours, out HierarchyIndex[] hierarchy,
-                setting.RetrievalMode, setting.ApproximationMode);
-
-            // 5. 过滤轮廓（根据最小面积）
-            var filteredContours = contours
-                .Where(contour => Cv2.ContourArea(contour) >= setting.MinContourArea)
-                .ToArray();
-
-            // 6. 绘制轮廓到原图
-            for (int i = 0; i < filteredContours.Length; i++)
-            {
-                // 绘制轮廓
-                Cv2.DrawContours(resultMat, filteredContours, i, 
-                    setting.ContourColor, 
-                    setting.ContourThickness);
-
-                // 绘制轮廓索引（如果需要）
-                if (setting.DrawContourIndex)
+                // 绘制所有轮廓
+                for (int i = 0; i < contours.Length; i++)
                 {
-                    var moments = Cv2.Moments(filteredContours[i]);
-                    if (moments.M00 != 0)
+                    Cv2.DrawContours(resultMat, contours, i, setting.ContourColor, setting.Thickness);
+
+                    // 绘制索引
+                    if (setting.DrawIndex)
                     {
-                        int cx = (int)(moments.M10 / moments.M00);
-                        int cy = (int)(moments.M01 / moments.M00);
-                        Cv2.PutText(resultMat, i.ToString(), new Point(cx, cy),
-                            HersheyFonts.HersheySimplex, 0.5, new Scalar(255, 255, 0), 2);
+                        var moments = Cv2.Moments(contours[i]);
+                        if (moments.M00 != 0)
+                        {
+                            int cx = (int)(moments.M10 / moments.M00);
+                            int cy = (int)(moments.M01 / moments.M00);
+                            Cv2.PutText(resultMat, i.ToString(), new Point(cx, cy),
+                                HersheyFonts.HersheySimplex, 0.5, new Scalar(255, 255, 0), 2);
+                        }
                     }
                 }
             }
-
-            return resultMat;
-        }
-        finally
-        {
-            processedMat?.Dispose();
-        }
-    }
-
-    /// <summary>
-    /// 根据指定方法转换为灰度图
-    /// </summary>
-    private Mat ConvertToGray(Mat sourceMat, GrayConversionMethod method)
-    {
-        Mat grayMat = new Mat();
-
-        switch (method)
-        {
-            case GrayConversionMethod.BGR2GRAY:
-                // 标准灰度转换 (0.299*R + 0.587*G + 0.114*B)
-                Cv2.CvtColor(sourceMat, grayMat, ColorConversionCodes.BGR2GRAY);
-                break;
-
-            case GrayConversionMethod.BlueChannel:
-                // 提取蓝色通道
-                Cv2.ExtractChannel(sourceMat, grayMat, 0);
-                break;
-
-            case GrayConversionMethod.GreenChannel:
-                // 提取绿色通道
-                Cv2.ExtractChannel(sourceMat, grayMat, 1);
-                break;
-
-            case GrayConversionMethod.RedChannel:
-                // 提取红色通道
-                Cv2.ExtractChannel(sourceMat, grayMat, 2);
-                break;
-
-            case GrayConversionMethod.Average:
-                // 平均值法
-                Mat[] channels = Cv2.Split(sourceMat);
-                grayMat = (channels[0] + channels[1] + channels[2]) / 3;
-                foreach (var channel in channels)
-                    channel.Dispose();
-                break;
-
-            case GrayConversionMethod.MaxValue:
-                // 最大值法
-                Mat[] channelsMax = Cv2.Split(sourceMat);
-                grayMat = channelsMax[0].Clone();
-                Cv2.Max(grayMat, channelsMax[1], grayMat);
-                Cv2.Max(grayMat, channelsMax[2], grayMat);
-                foreach (var channel in channelsMax)
-                    channel.Dispose();
-                break;
-
-            case GrayConversionMethod.MinValue:
-                // 最小值法
-                Mat[] channelsMin = Cv2.Split(sourceMat);
-                grayMat = channelsMin[0].Clone();
-                Cv2.Min(grayMat, channelsMin[1], grayMat);
-                Cv2.Min(grayMat, channelsMin[2], grayMat);
-                foreach (var channel in channelsMin)
-                    channel.Dispose();
-                break;
-
-            default:
-                Cv2.CvtColor(sourceMat, grayMat, ColorConversionCodes.BGR2GRAY);
-                break;
+            else
+            {
+                // 绘制指定索引的轮廓
+                if (setting.ContourIndex >= 0 && setting.ContourIndex < contours.Length)
+                {
+                    Cv2.DrawContours(resultMat, contours, setting.ContourIndex, 
+                        setting.ContourColor, setting.Thickness);
+                }
+            }
         }
 
-        return grayMat;
+        return resultMat;
     }
 }
