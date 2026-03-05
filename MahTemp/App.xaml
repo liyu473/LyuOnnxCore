@@ -22,6 +22,8 @@
             <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
             <converters:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter" />
             <converters:MatToBitmapSourceConverter x:Key="MatToBitmapSourceConverter" />
+            <converters:ThresholdTypeToDisplayConverter x:Key="ThresholdTypeToDisplayConverter" />
+            <converters:ThresholdTypeToEnabledConverter x:Key="ThresholdTypeToEnabledConverter" />
 
             <Style
                 x:Key="MahApps.Styles.MetroHeader.Horizontal"

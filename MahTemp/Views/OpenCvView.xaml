@@ -8,6 +8,7 @@
     xmlns:mah="http://metro.mahapps.com/winfx/xaml/controls"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:model="clr-namespace:MahTemp.Model"
+    xmlns:cv="clr-namespace:OpenCvSharp;assembly=OpenCvSharp"
     xmlns:viewmodels="clr-namespace:MahTemp.ViewModels"
     d:DataContext="{d:DesignInstance Type=viewmodels:OpenCvViewModel}"
     mc:Ignorable="d">
@@ -165,14 +166,99 @@
                                     IsOn="{Binding Threshold.IsEnabled}"
                                     OnContent="已启用"
                                     OffContent="未启用" />
-                                <lyu:SimpleStackPanel Orientation="Horizontal" Spacing="8">
-                                    <TextBlock VerticalAlignment="Center" Text="阈值:" />
-                                    <mah:NumericUpDown
-                                        Width="100"
-                                        Maximum="255"
-                                        Minimum="0"
-                                        Value="{Binding Threshold.ThresholdValue}" />
-                                </lyu:SimpleStackPanel>
+                                
+                                <mah:ToggleSwitch
+                                    Content="使用自适应二值化"
+                                    IsOn="{Binding Threshold.UseAdaptive}"
+                                    OnContent="自适应"
+                                    OffContent="普通" />
+                                
+                                <!-- 普通二值化参数 -->
+                                <Border Visibility="{Binding Threshold.UseAdaptive, Converter={StaticResource InverseBoolToVisibilityConverter}}">
+                                    <lyu:SimpleStackPanel Spacing="8">
+                                        <lyu:SimpleStackPanel Orientation="Horizontal" Spacing="8">
+                                            <TextBlock VerticalAlignment="Center" Text="二值化类型:" />
+                                            <ComboBox Width="200" SelectedItem="{Binding Threshold.Type}">
+                                                <ComboBox.ItemsSource>
+                                                    <x:Array Type="{x:Type cv:ThresholdTypes}">
+                                                        <cv:ThresholdTypes>Binary</cv:ThresholdTypes>
+                                                        <cv:ThresholdTypes>BinaryInv</cv:ThresholdTypes>
+                                                        <cv:ThresholdTypes>Trunc</cv:ThresholdTypes>
+                                                        <cv:ThresholdTypes>Tozero</cv:ThresholdTypes>
+                                                        <cv:ThresholdTypes>TozeroInv</cv:ThresholdTypes>
+                                                        <cv:ThresholdTypes>Otsu</cv:ThresholdTypes>
+                                                        <cv:ThresholdTypes>Triangle</cv:ThresholdTypes>
+                                                    </x:Array>
+                                                </ComboBox.ItemsSource>
+                                                <ComboBox.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <TextBlock Text="{Binding Converter={StaticResource ThresholdTypeToDisplayConverter}}" />
+                                                    </DataTemplate>
+                                                </ComboBox.ItemTemplate>
+                                            </ComboBox>
+                                        </lyu:SimpleStackPanel>
+                                        
+                                        <lyu:SimpleStackPanel Orientation="Horizontal" Spacing="8">
+                                            <TextBlock VerticalAlignment="Center" Text="阈值:" />
+                                            <mah:NumericUpDown
+                                                Width="100"
+                                                Maximum="255"
+                                                Minimum="0"
+                                                IsEnabled="{Binding Threshold.Type, Converter={StaticResource ThresholdTypeToEnabledConverter}}"
+                                                Value="{Binding Threshold.ThresholdValue}" />
+                                        </lyu:SimpleStackPanel>
+                                    </lyu:SimpleStackPanel>
+                                </Border>
+                                
+                                <!-- 自适应二值化参数 -->
+                                <Border Visibility="{Binding Threshold.UseAdaptive, Converter={StaticResource BoolToVisibilityConverter}}">
+                                    <lyu:SimpleStackPanel Spacing="8">
+                                        <lyu:SimpleStackPanel Orientation="Horizontal" Spacing="8">
+                                            <TextBlock VerticalAlignment="Center" Text="自适应方法:" />
+                                            <ComboBox Width="150" SelectedItem="{Binding Threshold.AdaptiveMethod}">
+                                                <ComboBox.ItemsSource>
+                                                    <x:Array Type="{x:Type cv:AdaptiveThresholdTypes}">
+                                                        <cv:AdaptiveThresholdTypes>MeanC</cv:AdaptiveThresholdTypes>
+                                                        <cv:AdaptiveThresholdTypes>GaussianC</cv:AdaptiveThresholdTypes>
+                                                    </x:Array>
+                                                </ComboBox.ItemsSource>
+                                            </ComboBox>
+                                        </lyu:SimpleStackPanel>
+                                        
+                                        <lyu:SimpleStackPanel Orientation="Horizontal" Spacing="8">
+                                            <TextBlock VerticalAlignment="Center" Text="二值化类型:" />
+                                            <ComboBox Width="150" SelectedItem="{Binding Threshold.AdaptiveType}">
+                                                <ComboBox.ItemsSource>
+                                                    <x:Array Type="{x:Type cv:ThresholdTypes}">
+                                                        <cv:ThresholdTypes>Binary</cv:ThresholdTypes>
+                                                        <cv:ThresholdTypes>BinaryInv</cv:ThresholdTypes>
+                                                    </x:Array>
+                                                </ComboBox.ItemsSource>
+                                            </ComboBox>
+                                        </lyu:SimpleStackPanel>
+                                        
+                                        <lyu:SimpleStackPanel Orientation="Horizontal" Spacing="8">
+                                            <TextBlock VerticalAlignment="Center" Text="块大小:" />
+                                            <mah:NumericUpDown
+                                                Width="100"
+                                                Maximum="99"
+                                                Minimum="3"
+                                                Interval="2"
+                                                Value="{Binding Threshold.BlockSize}" />
+                                        </lyu:SimpleStackPanel>
+                                        
+                                        <lyu:SimpleStackPanel Orientation="Horizontal" Spacing="8">
+                                            <TextBlock VerticalAlignment="Center" Text="常数C:" />
+                                            <mah:NumericUpDown
+                                                Width="100"
+                                                Maximum="50"
+                                                Minimum="-50"
+                                                Value="{Binding Threshold.C}" />
+                                        </lyu:SimpleStackPanel>
+                                    </lyu:SimpleStackPanel>
+                                </Border>
+                                
+                                <!-- 最大值（两种方法都需要） -->
                                 <lyu:SimpleStackPanel Orientation="Horizontal" Spacing="8">
                                     <TextBlock VerticalAlignment="Center" Text="最大值:" />
                                     <mah:NumericUpDown
@@ -195,6 +281,35 @@
                                     IsOn="{Binding FindContours.IsEnabled}"
                                     OnContent="已启用"
                                     OffContent="未启用" />
+                                
+                                <lyu:SimpleStackPanel Orientation="Horizontal" Spacing="8">
+                                    <TextBlock VerticalAlignment="Center" Text="检索模式:" />
+                                    <ComboBox Width="150" SelectedItem="{Binding FindContours.RetrievalMode}">
+                                        <ComboBox.ItemsSource>
+                                            <x:Array Type="{x:Type cv:RetrievalModes}">
+                                                <cv:RetrievalModes>External</cv:RetrievalModes>
+                                                <cv:RetrievalModes>List</cv:RetrievalModes>
+                                                <cv:RetrievalModes>CComp</cv:RetrievalModes>
+                                                <cv:RetrievalModes>Tree</cv:RetrievalModes>
+                                            </x:Array>
+                                        </ComboBox.ItemsSource>
+                                    </ComboBox>
+                                </lyu:SimpleStackPanel>
+                                
+                                <lyu:SimpleStackPanel Orientation="Horizontal" Spacing="8">
+                                    <TextBlock VerticalAlignment="Center" Text="近似方法:" />
+                                    <ComboBox Width="150" SelectedItem="{Binding FindContours.ApproximationMode}">
+                                        <ComboBox.ItemsSource>
+                                            <x:Array Type="{x:Type cv:ContourApproximationModes}">
+                                                <cv:ContourApproximationModes>ApproxNone</cv:ContourApproximationModes>
+                                                <cv:ContourApproximationModes>ApproxSimple</cv:ContourApproximationModes>
+                                                <cv:ContourApproximationModes>ApproxTC89L1</cv:ContourApproximationModes>
+                                                <cv:ContourApproximationModes>ApproxTC89KCOS</cv:ContourApproximationModes>
+                                            </x:Array>
+                                        </ComboBox.ItemsSource>
+                                    </ComboBox>
+                                </lyu:SimpleStackPanel>
+                                
                                 <lyu:SimpleStackPanel Orientation="Horizontal" Spacing="8">
                                     <TextBlock VerticalAlignment="Center" Text="最小面积:" />
                                     <mah:NumericUpDown

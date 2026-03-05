@@ -8,7 +8,7 @@ namespace LyuOnnxCore.Helpers;
 /// 标签管理辅助类
 /// </summary>
 public static class LabelHelper
-{
+{    
     /// <summary>
     /// 从文本文件加载标签列表（每行一个标签）
     /// </summary>
