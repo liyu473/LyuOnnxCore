@@ -163,6 +163,7 @@
                     <mah:HamburgerMenuSeparatorItem />
                     <mah:HamburgerMenuIconItem Icon="{iconPacks:Material Kind=ImageSearch}" Label="Detection" />
                     <mah:HamburgerMenuIconItem Icon="{iconPacks:Material Kind=ImageSearch}" Label="Cv" />
+                    <mah:HamburgerMenuIconItem Icon="{iconPacks:Material Kind=Camera}" Label="Calibration" />
                 </mah:HamburgerMenuItemCollection>
             </mah:HamburgerMenu.ItemsSource>
 
