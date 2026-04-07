@@ -174,7 +174,7 @@ public partial class CalibrationViewModel : ViewModelBase
                 var json = System.Text.Json.JsonSerializer.Serialize(new
                 {
                     ImageSize = new { _calibrationResult.ImageSize.Width, _calibrationResult.ImageSize.Height },
-                    CameraMatrix = _calibrationResult.CameraMatrix,
+                    CameraMatrix = _calibrationResult.CameraMatrixFlat,
                     DistortionCoefficients = _calibrationResult.DistortionCoefficients,
                     ReprojectionError = _calibrationResult.ReprojectionError,
                     SuccessfulImageCount = _calibrationResult.SuccessfulImageCount,

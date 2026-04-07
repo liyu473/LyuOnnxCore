@@ -1,4 +1,5 @@
 ﻿using OpenCvSharp;
+using System.Text.Json.Serialization;
 
 namespace LyuOnnxCore.Calibration;
 
@@ -33,7 +34,11 @@ public sealed class CameraCalibrationResult
 
     public Size ImageSize { get; }
 
+    [JsonIgnore]
     public double[,] CameraMatrix { get; }
+
+    [JsonPropertyName("CameraMatrix")]
+    public double[] CameraMatrixFlat => FlattenMatrix(CameraMatrix);
 
     public double[] DistortionCoefficients { get; }
 
@@ -50,4 +55,20 @@ public sealed class CameraCalibrationResult
     public int InputImageCount { get; }
 
     public int SkippedMismatchedResolutionCount { get; }
+
+    private static double[] FlattenMatrix(double[,] matrix)
+    {
+        int rows = matrix.GetLength(0);
+        int cols = matrix.GetLength(1);
+        var flat = new double[rows * cols];
+        int index = 0;
+        for (int i = 0; i < rows; i++)
+        {
+            for (int j = 0; j < cols; j++)
+            {
+                flat[index++] = matrix[i, j];
+            }
+        }
+        return flat;
+    }
 }
