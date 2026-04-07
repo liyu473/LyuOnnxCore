@@ -97,39 +97,76 @@ public static class CameraCalibrationService
                 $"Skipped {skippedMismatchedResolutionCount} images due to mismatched resolution.");
         }
 
-        var cameraMatrix = CreateIdentityMatrix();
-        var distortionCoefficients = new double[8];
+        using var cameraMatrixMat = CreateMatrixMat(CreateIdentityMatrix());
+        using var distortionCoefficientsMat = new Mat();
+        var objectPointMats = objectPoints.Select(CreateObjectPointMat).ToList();
+        var imagePointMats = imagePoints.Select(CreateImagePointMat).ToList();
 
-        double reprojectionError = Cv2.CalibrateCamera(
-            objectPoints,
-            imagePoints,
-            imageSize,
-            cameraMatrix,
-            distortionCoefficients,
-            out Vec3d[] rotationVectors,
-            out Vec3d[] translationVectors,
-            calibrationFlags,
-            criteria ?? new TermCriteria(CriteriaTypes.Eps | CriteriaTypes.MaxIter, 30, 1e-6));
+        try
+        {
+            double reprojectionError = Cv2.CalibrateCamera(
+                objectPointMats,
+                imagePointMats,
+                imageSize,
+                cameraMatrixMat,
+                distortionCoefficientsMat,
+                out Mat[] rotationVectorMats,
+                out Mat[] translationVectorMats,
+                calibrationFlags,
+                criteria ?? new TermCriteria(CriteriaTypes.Eps | CriteriaTypes.MaxIter, 30, 1e-6));
 
-        var perViewErrors = CalculatePerViewErrors(
-            objectPoints,
-            imagePoints,
-            cameraMatrix,
-            distortionCoefficients,
-            rotationVectors,
-            translationVectors);
+            try
+            {
+                var cameraMatrix = ToDoubleMatrix(cameraMatrixMat);
+                var distortionCoefficients = ToDoubleVector(distortionCoefficientsMat);
+                var rotationVectors = rotationVectorMats.Select(ReadVec3d).ToArray();
+                var translationVectors = translationVectorMats.Select(ReadVec3d).ToArray();
 
-        return new CameraCalibrationResult(
-            imageSize,
-            cameraMatrix,
-            distortionCoefficients,
-            rotationVectors,
-            translationVectors,
-            reprojectionError,
-            perViewErrors,
-            imagePoints.Count,
-            imageList.Count,
-            skippedMismatchedResolutionCount);
+                var perViewErrors = CalculatePerViewErrors(
+                    objectPoints,
+                    imagePoints,
+                    cameraMatrix,
+                    distortionCoefficients,
+                    rotationVectors,
+                    translationVectors);
+
+                return new CameraCalibrationResult(
+                    imageSize,
+                    cameraMatrix,
+                    distortionCoefficients,
+                    rotationVectors,
+                    translationVectors,
+                    reprojectionError,
+                    perViewErrors,
+                    imagePoints.Count,
+                    imageList.Count,
+                    skippedMismatchedResolutionCount);
+            }
+            finally
+            {
+                foreach (var mat in rotationVectorMats)
+                {
+                    mat.Dispose();
+                }
+
+                foreach (var mat in translationVectorMats)
+                {
+                    mat.Dispose();
+                }
+            }
+        }
+        finally
+        {
+            foreach (var mat in objectPointMats)
+            {
+                mat.Dispose();
+            }
+
+            foreach (var mat in imagePointMats)
+            {
+                mat.Dispose();
+            }
+        }
     }
 
     public static CameraCalibrationResult CalibrateFromChessboardImageFiles(
@@ -209,6 +246,30 @@ public static class CameraCalibrationService
         return gray;
     }
 
+    private static Mat CreateObjectPointMat(IEnumerable<Point3f> points)
+    {
+        var pointArray = points.ToArray();
+        var mat = new Mat(pointArray.Length, 1, MatType.CV_32FC3);
+        for (int i = 0; i < pointArray.Length; i++)
+        {
+            mat.Set(i, 0, pointArray[i]);
+        }
+
+        return mat;
+    }
+
+    private static Mat CreateImagePointMat(IEnumerable<Point2f> points)
+    {
+        var pointArray = points.ToArray();
+        var mat = new Mat(pointArray.Length, 1, MatType.CV_32FC2);
+        for (int i = 0; i < pointArray.Length; i++)
+        {
+            mat.Set(i, 0, pointArray[i]);
+        }
+
+        return mat;
+    }
+
     private static ChessboardFlags GetEffectiveFlags(ChessboardDetectionOptions options)
     {
         if (!options.UseSectorBasedDetector)
@@ -228,6 +289,58 @@ public static class CameraCalibrationService
         matrix[1, 1] = 1;
         matrix[2, 2] = 1;
         return matrix;
+    }
+
+    private static Mat CreateMatrixMat(double[,] values)
+    {
+        var rowCount = values.GetLength(0);
+        var columnCount = values.GetLength(1);
+        var mat = new Mat(rowCount, columnCount, MatType.CV_64FC1);
+
+        for (int row = 0; row < rowCount; row++)
+        {
+            for (int column = 0; column < columnCount; column++)
+            {
+                mat.Set(row, column, values[row, column]);
+            }
+        }
+
+        return mat;
+    }
+
+    private static double[,] ToDoubleMatrix(Mat mat)
+    {
+        var values = new double[mat.Rows, mat.Cols];
+        for (int row = 0; row < mat.Rows; row++)
+        {
+            for (int column = 0; column < mat.Cols; column++)
+            {
+                values[row, column] = mat.Get<double>(row, column);
+            }
+        }
+
+        return values;
+    }
+
+    private static double[] ToDoubleVector(Mat mat)
+    {
+        var values = new double[mat.Rows * mat.Cols];
+        int index = 0;
+        for (int row = 0; row < mat.Rows; row++)
+        {
+            for (int column = 0; column < mat.Cols; column++)
+            {
+                values[index++] = mat.Get<double>(row, column);
+            }
+        }
+
+        return values;
+    }
+
+    private static Vec3d ReadVec3d(Mat mat)
+    {
+        var values = ToDoubleVector(mat);
+        return new Vec3d(values[0], values[1], values[2]);
     }
 
     private static double[] ToVectorArray(Vec3d vector) => [vector.Item0, vector.Item1, vector.Item2];

@@ -213,7 +213,7 @@ public partial class CalibrationViewModel : ViewModelBase
         }
         CameraMatrixText = matrixBuilder.ToString();
 
-        DistortionCoefficientsText = string.Join(", ", _calibrationResult.DistortionCoefficients.Select(x => x.ToString("F4")));
+        DistortionCoefficientsText = string.Join(", ", _calibrationResult.DistortionCoefficients.Select(x => x.ToString("G17")));
     }
 
     private void LoadPreviewImage(string filePath, bool drawCorners = false)
