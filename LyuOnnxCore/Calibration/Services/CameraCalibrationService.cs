@@ -1,5 +1,6 @@
 using LyuOnnxCore.Calibration.Interface;
 using LyuOnnxCore.Calibration.Models;
+using LyuOnnxCore.Calibration.Serialization;
 using OpenCvSharp;
 using System.Text.Json;
 
@@ -94,41 +95,78 @@ internal sealed class CameraCalibrationService : ICameraCalibration
             );
         }
 
-        var cameraMatrix = CreateIdentityMatrix();
-        var distortionCoefficients = new double[8];
+        using var cameraMatrixMat = CreateMatrixMat(CreateIdentityMatrix());
+        using var distortionCoefficientsMat = new Mat();
+        var objectPointMats = objectPoints.Select(CreateObjectPointMat).ToList();
+        var imagePointMats = imagePoints.Select(CreateImagePointMat).ToList();
 
-        double reprojectionError = Cv2.CalibrateCamera(
-            objectPoints,
-            imagePoints,
-            imageSize,
-            cameraMatrix,
-            distortionCoefficients,
-            out Vec3d[] rotationVectors,
-            out Vec3d[] translationVectors,
-            CalibrationFlags.None,
-            new TermCriteria(CriteriaTypes.Eps | CriteriaTypes.MaxIter, 30, 1e-6)
-        );
-
-        return new CameraCalibrateResult
+        try
         {
-            ImageSize = imageSize,
-            CameraMatrix = cameraMatrix,
-            DistortionCoefficients = distortionCoefficients,
-            RotationVectors = rotationVectors,
-            TranslationVectors = translationVectors,
-            ReprojectionError = reprojectionError,
-            PerViewErrors = CalculatePerViewErrors(
-                objectPoints,
-                imagePoints,
-                cameraMatrix,
-                distortionCoefficients,
-                rotationVectors,
-                translationVectors
-            ),
-            SuccessfulImageCount = imagePoints.Count,
-            InputImageCount = imageList.Count,
-            SkippedMismatchedResolutionCount = skippedMismatchedResolutionCount
-        };
+            double reprojectionError = Cv2.CalibrateCamera(
+                objectPointMats,
+                imagePointMats,
+                imageSize,
+                cameraMatrixMat,
+                distortionCoefficientsMat,
+                out Mat[] rotationVectorMats,
+                out Mat[] translationVectorMats,
+                CalibrationFlags.None,
+                new TermCriteria(CriteriaTypes.Eps | CriteriaTypes.MaxIter, 30, 1e-6)
+            );
+
+            try
+            {
+                var cameraMatrix = ToDoubleMatrix(cameraMatrixMat);
+                var distortionCoefficients = ToDoubleVector(distortionCoefficientsMat);
+                var rotationVectors = rotationVectorMats.Select(ReadVec3d).ToArray();
+                var translationVectors = translationVectorMats.Select(ReadVec3d).ToArray();
+
+                return new CameraCalibrateResult
+                {
+                    ImageSize = imageSize,
+                    CameraMatrix = cameraMatrix,
+                    DistortionCoefficients = distortionCoefficients,
+                    RotationVectors = rotationVectors,
+                    TranslationVectors = translationVectors,
+                    ReprojectionError = reprojectionError,
+                    PerViewErrors = CalculatePerViewErrors(
+                        objectPoints,
+                        imagePoints,
+                        cameraMatrix,
+                        distortionCoefficients,
+                        rotationVectors,
+                        translationVectors
+                    ),
+                    SuccessfulImageCount = imagePoints.Count,
+                    InputImageCount = imageList.Count,
+                    SkippedMismatchedResolutionCount = skippedMismatchedResolutionCount
+                };
+            }
+            finally
+            {
+                foreach (var mat in rotationVectorMats)
+                {
+                    mat.Dispose();
+                }
+
+                foreach (var mat in translationVectorMats)
+                {
+                    mat.Dispose();
+                }
+            }
+        }
+        finally
+        {
+            foreach (var mat in objectPointMats)
+            {
+                mat.Dispose();
+            }
+
+            foreach (var mat in imagePointMats)
+            {
+                mat.Dispose();
+            }
+        }
     }
 
     public string SerializeResult(
@@ -140,7 +178,7 @@ internal sealed class CameraCalibrationService : ICameraCalibration
 
         return JsonSerializer.Serialize(
             result,
-            CreateJsonOptions(writeIndented)
+            CalibrationJsonSerializer.CreateOptions(writeIndented)
         );
     }
 
@@ -153,7 +191,7 @@ internal sealed class CameraCalibrationService : ICameraCalibration
 
         return JsonSerializer.Deserialize<CameraCalibrateResult>(
             json,
-            CreateJsonOptions(writeIndented: false)
+            CalibrationJsonSerializer.CreateOptions(writeIndented: false)
         ) ?? throw new InvalidOperationException("Failed to deserialize camera calibration result.");
     }
 
@@ -228,6 +266,30 @@ internal sealed class CameraCalibrationService : ICameraCalibration
         return gray;
     }
 
+    private static Mat CreateObjectPointMat(IEnumerable<Point3f> points)
+    {
+        var pointArray = points.ToArray();
+        var mat = new Mat(pointArray.Length, 1, MatType.CV_32FC3);
+        for (int i = 0; i < pointArray.Length; i++)
+        {
+            mat.Set(i, 0, pointArray[i]);
+        }
+
+        return mat;
+    }
+
+    private static Mat CreateImagePointMat(IEnumerable<Point2f> points)
+    {
+        var pointArray = points.ToArray();
+        var mat = new Mat(pointArray.Length, 1, MatType.CV_32FC2);
+        for (int i = 0; i < pointArray.Length; i++)
+        {
+            mat.Set(i, 0, pointArray[i]);
+        }
+
+        return mat;
+    }
+
     private static double[] CalculatePerViewErrors(
         IReadOnlyList<IEnumerable<Point3f>> objectPoints,
         IReadOnlyList<IEnumerable<Point2f>> imagePoints,
@@ -278,12 +340,56 @@ internal sealed class CameraCalibrationService : ICameraCalibration
         return matrix;
     }
 
-    private static JsonSerializerOptions CreateJsonOptions(bool writeIndented)
+    private static Mat CreateMatrixMat(double[,] values)
     {
-        return new JsonSerializerOptions
+        var rowCount = values.GetLength(0);
+        var columnCount = values.GetLength(1);
+        var mat = new Mat(rowCount, columnCount, MatType.CV_64FC1);
+
+        for (int row = 0; row < rowCount; row++)
         {
-            WriteIndented = writeIndented
-        };
+            for (int column = 0; column < columnCount; column++)
+            {
+                mat.Set(row, column, values[row, column]);
+            }
+        }
+
+        return mat;
+    }
+
+    private static double[,] ToDoubleMatrix(Mat mat)
+    {
+        var values = new double[mat.Rows, mat.Cols];
+        for (int row = 0; row < mat.Rows; row++)
+        {
+            for (int column = 0; column < mat.Cols; column++)
+            {
+                values[row, column] = mat.Get<double>(row, column);
+            }
+        }
+
+        return values;
+    }
+
+    private static double[] ToDoubleVector(Mat mat)
+    {
+        var values = new double[mat.Rows * mat.Cols];
+        int index = 0;
+        for (int row = 0; row < mat.Rows; row++)
+        {
+            for (int column = 0; column < mat.Cols; column++)
+            {
+                values[index++] = mat.Get<double>(row, column);
+            }
+        }
+
+        return values;
+    }
+
+    private static Vec3d ReadVec3d(Mat mat)
+    {
+        var values = ToDoubleVector(mat);
+        return new Vec3d(values[0], values[1], values[2]);
     }
 
     private static double[] ToVectorArray(Vec3d vector) => [vector.Item0, vector.Item1, vector.Item2];

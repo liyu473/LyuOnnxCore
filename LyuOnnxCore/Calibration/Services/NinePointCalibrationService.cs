@@ -1,5 +1,6 @@
 using LyuOnnxCore.Calibration.Interface;
 using LyuOnnxCore.Calibration.Models;
+using LyuOnnxCore.Calibration.Serialization;
 using OpenCvSharp;
 using System.Text.Json;
 
@@ -84,7 +85,7 @@ internal sealed class NinePointCalibrationService : INinePointCalibration
 
         return JsonSerializer.Serialize(
             result,
-            CreateJsonOptions(writeIndented)
+            CalibrationJsonSerializer.CreateOptions(writeIndented)
         );
     }
 
@@ -97,7 +98,7 @@ internal sealed class NinePointCalibrationService : INinePointCalibration
 
         return JsonSerializer.Deserialize<NinePointCalibrationResult>(
             json,
-            CreateJsonOptions(writeIndented: false)
+            CalibrationJsonSerializer.CreateOptions(writeIndented: false)
         ) ?? throw new InvalidOperationException("Failed to deserialize nine-point calibration result.");
     }
 
@@ -221,13 +222,5 @@ internal sealed class NinePointCalibrationService : INinePointCalibration
         }
 
         return mat;
-    }
-
-    private static JsonSerializerOptions CreateJsonOptions(bool writeIndented)
-    {
-        return new JsonSerializerOptions
-        {
-            WriteIndented = writeIndented
-        };
     }
 }
