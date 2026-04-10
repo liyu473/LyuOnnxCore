@@ -8,7 +8,7 @@
 
 
 		<PackageId>LyuOnnxCore</PackageId>
-		<Version>1.0.5</Version>
+		<Version>1.0.6</Version>
 		<Authors>Liyu</Authors>
 		<Description>为yolo转onnx模型的相关拓展</Description>
 		<PackageTags>onnx,opencv</PackageTags>
@@ -27,6 +27,7 @@
 		<PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.23.2" />
 		<PackageReference Include="OpenCvSharp4" Version="4.11.0.20250507" />
 		<PackageReference Include="System.Drawing.Common" Version="9.0.0" />
+		<PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="11.0.0-preview.2.26159.112" />
 	</ItemGroup>
 
 	<!-- OpenCv跨平台运行时支持 -->

@@ -15,7 +15,6 @@ public class LabelToViewConverter : IValueConverter
             "Settings" => App.GetService<Views.SettingsPage>(),
             "Detection" => App.GetService<Views.DetectionPage>(),
             "Cv" => App.GetService<Views.OpenCvView>(),
-            "Calibration" => App.GetService<Views.CalibrationPage>(),
             _ => null
         };
     }

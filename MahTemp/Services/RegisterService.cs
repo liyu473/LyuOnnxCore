@@ -12,7 +12,6 @@ public static class RegisterService
         services.AddTransient<SettingsPage>();
         services.AddTransient<DetectionPage>();
         services.AddTransient<OpenCvView>();
-        services.AddTransient<CalibrationPage>();
     }
 
 
@@ -22,6 +21,5 @@ public static class RegisterService
         services.AddSingleton<SettingsViewModel>();
         services.AddSingleton<DetectionViewModel>();
         services.AddSingleton<OpenCvViewModel>();
-        services.AddSingleton<CalibrationViewModel>();
     }
 }

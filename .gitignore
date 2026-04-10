@@ -22,3 +22,6 @@ out/
 **/OnnxModel/*.onnx
 **/OnnxModel/*.pb
 **/OnnxModel/*.pt
+
+
+.dotnet/

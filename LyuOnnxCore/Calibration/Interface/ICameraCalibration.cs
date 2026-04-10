@@ -1,12 +1,26 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using LyuOnnxCore.Calibration.Models;
+using OpenCvSharp;
 
-namespace LyuOnnxCore.Calibration
+namespace LyuOnnxCore.Calibration.Interface;
+
+public interface ICameraCalibration
 {
-    internal interface ICameraCalibration
-    {
-    }
+    CameraCalibrateResult Calibrate(
+        IEnumerable<string> imagePaths,
+        Size patternSize,
+        float squareSizeMm
+    );
+
+    CameraCalibrateResult Calibrate(
+        IEnumerable<Mat> images,
+        Size patternSize,
+        float squareSizeMm
+    );
+
+    string SerializeResult(
+        CameraCalibrateResult result,
+        bool writeIndented = true
+    );
+
+    CameraCalibrateResult DeserializeResult(string json);
 }

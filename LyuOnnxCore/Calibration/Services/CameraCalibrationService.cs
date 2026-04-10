@@ -1,0 +1,290 @@
+using LyuOnnxCore.Calibration.Interface;
+using LyuOnnxCore.Calibration.Models;
+using OpenCvSharp;
+using System.Text.Json;
+
+namespace LyuOnnxCore.Calibration.Services;
+
+internal sealed class CameraCalibrationService : ICameraCalibration
+{
+    public CameraCalibrateResult Calibrate(
+        IEnumerable<string> imagePaths,
+        Size patternSize,
+        float squareSizeMm
+    )
+    {
+        ArgumentNullException.ThrowIfNull(imagePaths);
+
+        var mats = new List<Mat>();
+        try
+        {
+            foreach (var imagePath in imagePaths.Where(static path => !string.IsNullOrWhiteSpace(path)))
+            {
+                if (!File.Exists(imagePath))
+                {
+                    throw new FileNotFoundException($"Calibration image was not found: {imagePath}", imagePath);
+                }
+
+                mats.Add(Cv2.ImRead(imagePath, ImreadModes.Color));
+            }
+
+            return Calibrate(mats, patternSize, squareSizeMm);
+        }
+        finally
+        {
+            foreach (var mat in mats)
+            {
+                mat.Dispose();
+            }
+        }
+    }
+
+    public CameraCalibrateResult Calibrate(
+        IEnumerable<Mat> images,
+        Size patternSize,
+        float squareSizeMm
+    )
+    {
+        ArgumentNullException.ThrowIfNull(images);
+
+        ValidatePatternSize(patternSize);
+        if (squareSizeMm <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(squareSizeMm), "Square size must be greater than 0.");
+        }
+
+        var imageList = images.Where(static image => image is not null && !image.Empty()).ToList();
+        if (imageList.Count == 0)
+        {
+            throw new ArgumentException("At least one valid calibration image is required.", nameof(images));
+        }
+
+        var dominantResolutionGroup = imageList
+            .GroupBy(static image => (image.Width, image.Height))
+            .OrderByDescending(static group => group.Count())
+            .ThenByDescending(static group => group.Key.Width * group.Key.Height)
+            .FirstOrDefault() ?? throw new InvalidOperationException("Unable to determine an effective image resolution from the input images.");
+        var imageSize = new Size(dominantResolutionGroup.Key.Width, dominantResolutionGroup.Key.Height);
+        var objectTemplate = CreateObjectPoints(patternSize, squareSizeMm);
+        var objectPoints = new List<IEnumerable<Point3f>>();
+        var imagePoints = new List<IEnumerable<Point2f>>();
+        int skippedMismatchedResolutionCount = 0;
+
+        foreach (var image in imageList)
+        {
+            if (image.Size() != imageSize)
+            {
+                skippedMismatchedResolutionCount++;
+                continue;
+            }
+
+            if (!TryFindChessboardCorners(image, patternSize, out var corners))
+            {
+                continue;
+            }
+
+            objectPoints.Add(objectTemplate);
+            imagePoints.Add(corners);
+        }
+
+        if (imagePoints.Count < 3)
+        {
+            throw new InvalidOperationException(
+                $"Camera calibration needs at least 3 images with a full chessboard detection, but only {imagePoints.Count} were valid."
+            );
+        }
+
+        var cameraMatrix = CreateIdentityMatrix();
+        var distortionCoefficients = new double[8];
+
+        double reprojectionError = Cv2.CalibrateCamera(
+            objectPoints,
+            imagePoints,
+            imageSize,
+            cameraMatrix,
+            distortionCoefficients,
+            out Vec3d[] rotationVectors,
+            out Vec3d[] translationVectors,
+            CalibrationFlags.None,
+            new TermCriteria(CriteriaTypes.Eps | CriteriaTypes.MaxIter, 30, 1e-6)
+        );
+
+        return new CameraCalibrateResult
+        {
+            ImageSize = imageSize,
+            CameraMatrix = cameraMatrix,
+            DistortionCoefficients = distortionCoefficients,
+            RotationVectors = rotationVectors,
+            TranslationVectors = translationVectors,
+            ReprojectionError = reprojectionError,
+            PerViewErrors = CalculatePerViewErrors(
+                objectPoints,
+                imagePoints,
+                cameraMatrix,
+                distortionCoefficients,
+                rotationVectors,
+                translationVectors
+            ),
+            SuccessfulImageCount = imagePoints.Count,
+            InputImageCount = imageList.Count,
+            SkippedMismatchedResolutionCount = skippedMismatchedResolutionCount
+        };
+    }
+
+    public string SerializeResult(
+        CameraCalibrateResult result,
+        bool writeIndented = true
+    )
+    {
+        ArgumentNullException.ThrowIfNull(result);
+
+        return JsonSerializer.Serialize(
+            result,
+            CreateJsonOptions(writeIndented)
+        );
+    }
+
+    public CameraCalibrateResult DeserializeResult(string json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            throw new ArgumentException("Calibration result JSON cannot be null or empty.", nameof(json));
+        }
+
+        return JsonSerializer.Deserialize<CameraCalibrateResult>(
+            json,
+            CreateJsonOptions(writeIndented: false)
+        ) ?? throw new InvalidOperationException("Failed to deserialize camera calibration result.");
+    }
+
+    private static void ValidatePatternSize(Size patternSize)
+    {
+        if (patternSize.Width < 2 || patternSize.Height < 2)
+        {
+            throw new ArgumentOutOfRangeException(nameof(patternSize), "Pattern width and height must both be at least 2.");
+        }
+    }
+
+    private static Point3f[] CreateObjectPoints(Size patternSize, float squareSizeMm)
+    {
+        var points = new Point3f[patternSize.Width * patternSize.Height];
+        int index = 0;
+
+        for (int row = 0; row < patternSize.Height; row++)
+        {
+            for (int column = 0; column < patternSize.Width; column++)
+            {
+                points[index++] = new Point3f(column * squareSizeMm, row * squareSizeMm, 0);
+            }
+        }
+
+        return points;
+    }
+
+    private static bool TryFindChessboardCorners(Mat image, Size patternSize, out Point2f[] corners)
+    {
+        using var gray = PrepareGrayImage(image);
+        const ChessboardFlags legacyFlags =
+            ChessboardFlags.AdaptiveThresh |
+            ChessboardFlags.NormalizeImage |
+            ChessboardFlags.FastCheck;
+
+        if (Cv2.FindChessboardCornersSB(
+            gray,
+            patternSize,
+            out corners,
+            ChessboardFlags.NormalizeImage | ChessboardFlags.Exhaustive | ChessboardFlags.Accuracy
+        ))
+        {
+            return corners.Length == patternSize.Width * patternSize.Height;
+        }
+
+        if (!Cv2.FindChessboardCorners(gray, patternSize, out corners, legacyFlags))
+        {
+            corners = [];
+            return false;
+        }
+
+        Cv2.CornerSubPix(
+            gray,
+            corners,
+            new Size(11, 11),
+            new Size(-1, -1),
+            new TermCriteria(CriteriaTypes.Eps | CriteriaTypes.MaxIter, 30, 0.1)
+        );
+
+        return corners.Length == patternSize.Width * patternSize.Height;
+    }
+
+    private static Mat PrepareGrayImage(Mat image)
+    {
+        if (image.Channels() == 1)
+        {
+            return image.Clone();
+        }
+
+        var gray = new Mat();
+        Cv2.CvtColor(image, gray, ColorConversionCodes.BGR2GRAY);
+        return gray;
+    }
+
+    private static double[] CalculatePerViewErrors(
+        IReadOnlyList<IEnumerable<Point3f>> objectPoints,
+        IReadOnlyList<IEnumerable<Point2f>> imagePoints,
+        double[,] cameraMatrix,
+        double[] distortionCoefficients,
+        IReadOnlyList<Vec3d> rotationVectors,
+        IReadOnlyList<Vec3d> translationVectors
+    )
+    {
+        var errors = new double[imagePoints.Count];
+
+        for (int i = 0; i < imagePoints.Count; i++)
+        {
+            var objectPointArray = objectPoints[i].ToArray();
+            var imagePointArray = imagePoints[i].ToArray();
+
+            Cv2.ProjectPoints(
+                objectPointArray,
+                ToVectorArray(rotationVectors[i]),
+                ToVectorArray(translationVectors[i]),
+                cameraMatrix,
+                distortionCoefficients,
+                out Point2f[] projectedPoints,
+                out _,
+                0
+            );
+
+            double squaredError = 0;
+            for (int pointIndex = 0; pointIndex < imagePointArray.Length; pointIndex++)
+            {
+                double dx = projectedPoints[pointIndex].X - imagePointArray[pointIndex].X;
+                double dy = projectedPoints[pointIndex].Y - imagePointArray[pointIndex].Y;
+                squaredError += (dx * dx) + (dy * dy);
+            }
+
+            errors[i] = Math.Sqrt(squaredError / imagePointArray.Length);
+        }
+
+        return errors;
+    }
+
+    private static double[,] CreateIdentityMatrix()
+    {
+        var matrix = new double[3, 3];
+        matrix[0, 0] = 1;
+        matrix[1, 1] = 1;
+        matrix[2, 2] = 1;
+        return matrix;
+    }
+
+    private static JsonSerializerOptions CreateJsonOptions(bool writeIndented)
+    {
+        return new JsonSerializerOptions
+        {
+            WriteIndented = writeIndented
+        };
+    }
+
+    private static double[] ToVectorArray(Vec3d vector) => [vector.Item0, vector.Item1, vector.Item2];
+}
