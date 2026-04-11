@@ -129,8 +129,17 @@ var restored = cameraCalibration.DeserializeResult(json);
 
 ```csharp
 NinePointCalibrationResult Calibrate(
+    IList<CalibrationPair> pairs
+);
+
+NinePointCalibrationResult Calibrate(
     CameraCalibrateResult cameraCalibration,
     IList<CalibrationPair> pairs
+);
+
+Point2d PixelToWorld(
+    Point2d pixelPoint,
+    NinePointCalibrationResult ninePointCalibration
 );
 
 Point2d PixelToWorld(
@@ -156,6 +165,8 @@ public class CalibrationPair
 - `WorldPoint`：平台坐标
 - 当前实现里 `WorldPoint` 推荐直接使用脉冲值
 - 至少需要 4 组点，推荐 9 组或更多
+- 如果传入 `CameraCalibrateResult`，会先做去畸变再拟合
+- 如果不传入 `CameraCalibrateResult`，会直接使用原始像素坐标拟合
 
 示例：
 
@@ -187,6 +198,17 @@ var worldPoint = ninePointCalibration.PixelToWorld(
 Console.WriteLine($"WorldX: {worldPoint.X:F2}, WorldY: {worldPoint.Y:F2}");
 ```
 
+不依赖相机内参时，也可以直接这样用：
+
+```csharp
+var ninePointResult = ninePointCalibration.Calibrate(pairs);
+
+var worldPoint = ninePointCalibration.PixelToWorld(
+    new Point2d(330.0, 305.0),
+    ninePointResult
+);
+```
+
 `NinePointCalibrationResult` 主要字段：
 
 - `PixelToWorldTransform`：像素到平台的 3x3 变换矩阵
@@ -204,6 +226,7 @@ Console.WriteLine($"WorldX: {worldPoint.X:F2}, WorldY: {worldPoint.Y:F2}");
 - `PixelToWorldTransform` 的输入必须是去畸变后的参考像素
 - `INinePointCalibration.PixelToWorld(...)` 内部已经先做了去畸变，再进入该变换
 - `NinePointCalibrationResult` 中的扁平矩阵字段现在可直接用于序列化和反序列化
+- 如果九点结果是通过不带内参的重载生成的，那么 `CameraMatrix` 会为空，`DistortionCoefficients` 也会为空
 
 ### 九点标定结果序列化
 

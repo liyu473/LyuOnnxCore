@@ -6,8 +6,17 @@ namespace LyuOnnxCore.Calibration.Interface;
 public interface INinePointCalibration
 {
     NinePointCalibrationResult Calibrate(
+        IList<CalibrationPair> pairs
+    );
+
+    NinePointCalibrationResult Calibrate(
         CameraCalibrateResult cameraCalibration,
         IList<CalibrationPair> pairs
+    );
+
+    Point2d PixelToWorld(
+        Point2d pixelPoint,
+        NinePointCalibrationResult ninePointCalibration
     );
 
     Point2d PixelToWorld(

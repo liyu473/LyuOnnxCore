@@ -9,57 +9,30 @@ namespace LyuOnnxCore.Calibration.Services;
 internal sealed class NinePointCalibrationService : INinePointCalibration
 {
     public NinePointCalibrationResult Calibrate(
+        IList<CalibrationPair> pairs
+    )
+    {
+        return CalibrateInternal(null, pairs);
+    }
+
+    public NinePointCalibrationResult Calibrate(
         CameraCalibrateResult cameraCalibration,
         IList<CalibrationPair> pairs
     )
     {
         ArgumentNullException.ThrowIfNull(cameraCalibration);
-        ArgumentNullException.ThrowIfNull(pairs);
+        return CalibrateInternal(cameraCalibration, pairs);
+    }
 
-        if (pairs.Count < 4)
-        {
-            throw new InvalidOperationException("Nine-point calibration requires at least 4 point pairs, and 9 or more is recommended.");
-        }
+    public Point2d PixelToWorld(
+        Point2d pixelPoint,
+        NinePointCalibrationResult ninePointCalibration
+    )
+    {
+        ArgumentNullException.ThrowIfNull(ninePointCalibration);
 
-        var rawImagePoints = pairs.Select(static pair => pair.ImagePoint).ToArray();
-        var undistortedImagePoints = UndistortPoints(rawImagePoints, cameraCalibration);
-        var worldPoints = pairs.Select(static pair => pair.WorldPoint).ToArray();
-
-        using var inlierMask = new Mat();
-        using var pixelToWorldMat = Cv2.FindHomography(
-            undistortedImagePoints,
-            worldPoints,
-            HomographyMethods.Ransac,
-            3.0,
-            inlierMask
-        );
-
-        if (pixelToWorldMat.Empty())
-        {
-            throw new InvalidOperationException("Failed to solve the pixel-to-world transform from the provided point pairs.");
-        }
-
-        using var worldToPixelMat = new Mat();
-        if (Cv2.Invert(pixelToWorldMat, worldToPixelMat) == 0)
-        {
-            throw new InvalidOperationException("Failed to invert the world-to-pixel transform.");
-        }
-
-        var projectedWorldPoints = Cv2.PerspectiveTransform(undistortedImagePoints, pixelToWorldMat);
-        CalculateErrors(projectedWorldPoints, worldPoints, out double meanError, out double maxError);
-
-        return new NinePointCalibrationResult
-        {
-            PixelToWorldTransform = ToDoubleMatrix(pixelToWorldMat),
-            WorldToPixelTransform = ToDoubleMatrix(worldToPixelMat),
-            CameraMatrix = (double[,])cameraCalibration.CameraMatrix.Clone(),
-            DistortionCoefficients = [.. cameraCalibration.DistortionCoefficients],
-            MeanReprojectionError = meanError,
-            MaxReprojectionError = maxError,
-            PairCount = pairs.Count,
-            InlierCount = CountInliers(inlierMask, pairs.Count),
-            Pairs = [.. pairs]
-        };
+        using var pixelToWorldTransform = CreateMatrixMat(ninePointCalibration.PixelToWorldTransform);
+        return Cv2.PerspectiveTransform([pixelPoint], pixelToWorldTransform)[0];
     }
 
     public Point2d PixelToWorld(
@@ -72,8 +45,7 @@ internal sealed class NinePointCalibrationService : INinePointCalibration
         ArgumentNullException.ThrowIfNull(ninePointCalibration);
 
         var undistortedPoint = UndistortPoint(pixelPoint, cameraCalibration);
-        using var pixelToWorldTransform = CreateMatrixMat(ninePointCalibration.PixelToWorldTransform);
-        return Cv2.PerspectiveTransform([undistortedPoint], pixelToWorldTransform)[0];
+        return PixelToWorld(undistortedPoint, ninePointCalibration);
     }
 
     public string SerializeResult(
@@ -100,6 +72,61 @@ internal sealed class NinePointCalibrationService : INinePointCalibration
             json,
             CalibrationJsonSerializer.CreateOptions(writeIndented: false)
         ) ?? throw new InvalidOperationException("Failed to deserialize nine-point calibration result.");
+    }
+
+    private static NinePointCalibrationResult CalibrateInternal(
+        CameraCalibrateResult? cameraCalibration,
+        IList<CalibrationPair> pairs
+    )
+    {
+        ArgumentNullException.ThrowIfNull(pairs);
+
+        if (pairs.Count < 4)
+        {
+            throw new InvalidOperationException("Nine-point calibration requires at least 4 point pairs, and 9 or more is recommended.");
+        }
+
+        var rawImagePoints = pairs.Select(static pair => pair.ImagePoint).ToArray();
+        var sourceImagePoints = cameraCalibration is null
+            ? rawImagePoints
+            : UndistortPoints(rawImagePoints, cameraCalibration);
+        var worldPoints = pairs.Select(static pair => pair.WorldPoint).ToArray();
+
+        using var inlierMask = new Mat();
+        using var pixelToWorldMat = Cv2.FindHomography(
+            sourceImagePoints,
+            worldPoints,
+            HomographyMethods.Ransac,
+            3.0,
+            inlierMask
+        );
+
+        if (pixelToWorldMat.Empty())
+        {
+            throw new InvalidOperationException("Failed to solve the pixel-to-world transform from the provided point pairs.");
+        }
+
+        using var worldToPixelMat = new Mat();
+        if (Cv2.Invert(pixelToWorldMat, worldToPixelMat) == 0)
+        {
+            throw new InvalidOperationException("Failed to invert the world-to-pixel transform.");
+        }
+
+        var projectedWorldPoints = Cv2.PerspectiveTransform(sourceImagePoints, pixelToWorldMat);
+        CalculateErrors(projectedWorldPoints, worldPoints, out double meanError, out double maxError);
+
+        return new NinePointCalibrationResult
+        {
+            PixelToWorldTransform = ToDoubleMatrix(pixelToWorldMat),
+            WorldToPixelTransform = ToDoubleMatrix(worldToPixelMat),
+            CameraMatrix = cameraCalibration is null ? null : (double[,])cameraCalibration.CameraMatrix.Clone(),
+            DistortionCoefficients = cameraCalibration is null ? [] : [.. cameraCalibration.DistortionCoefficients],
+            MeanReprojectionError = meanError,
+            MaxReprojectionError = maxError,
+            PairCount = pairs.Count,
+            InlierCount = CountInliers(inlierMask, pairs.Count),
+            Pairs = [.. pairs]
+        };
     }
 
     private static Point2d UndistortPoint(Point2d point, CameraCalibrateResult cameraCalibration)
