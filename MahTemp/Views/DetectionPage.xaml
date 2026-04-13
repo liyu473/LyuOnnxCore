@@ -316,6 +316,13 @@
                                     Command="{Binding SaveDetectionResultCommand}"
                                     Content="保存检测结果" />
                             </StackPanel>
+
+                            <TextBlock
+                                Grid.Row="2"
+                                Grid.ColumnSpan="2"
+                                Margin="10,0"
+                                HorizontalAlignment="Left"
+                                Text="{Binding DetectionTime}" />
                         </Grid>
                     </mah:SplitView>
                 </Grid>

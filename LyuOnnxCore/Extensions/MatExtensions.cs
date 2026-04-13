@@ -1,262 +1,260 @@
-using OpenCvSharp;
 using LyuOnnxCore.Models;
+using OpenCvSharp;
 using System.IO;
 
 namespace LyuOnnxCore.Extensions;
 
 /// <summary>
-/// OpenCV Mat 扩展方法
+/// OpenCV Mat helpers.
 /// </summary>
 public static class MatExtensions
 {
-
-    /// <summary>
-    /// 裁剪并保存检测区域到指定文件夹
-    /// </summary>
-    /// <param name="image">原始图像</param>
-    /// <param name="detections">检测结果列表</param>
-    /// <param name="outputFolder">输出文件夹路径</param>
-    /// <param name="errorMessages">输出参数，返回错误信息列表</param>
-    /// <param name="fileNamePrefix">文件名前缀，默认为 "crop"</param>
-    /// <returns>保存的文件路径列表</returns>
     public static List<string> SaveCroppedRegions(
         this Mat image,
-        List<DetectionResult> detections,
+        IReadOnlyList<HbbDetectionResult> detections,
         string outputFolder,
         out List<string> errorMessages,
-        string fileNamePrefix = "crop")
+        string fileNamePrefix = "crop"
+    )
+    {
+        return SaveCroppedRegionsCore(
+            image,
+            detections,
+            outputFolder,
+            out errorMessages,
+            detection => CropBoundingBox(image, detection.BoundingBox, out _),
+            detection => detection.LabelName,
+            detection => detection.Confidence,
+            fileNamePrefix
+        );
+    }
+
+    public static List<string> SaveCroppedRegions(
+        this Mat image,
+        IReadOnlyList<ObbDetectionResult> detections,
+        string outputFolder,
+        out List<string> errorMessages,
+        string fileNamePrefix = "crop"
+    )
+    {
+        return SaveCroppedRegionsCore(
+            image,
+            detections,
+            outputFolder,
+            out errorMessages,
+            detection => CropRotatedRect(image, detection.OrientedBoundingBox, out _),
+            detection => detection.LabelName,
+            detection => detection.Confidence,
+            fileNamePrefix
+        );
+    }
+
+    public static bool SaveCroppedRegion(
+        this Mat image,
+        HbbDetectionResult detection,
+        string filePath
+    )
+    {
+        return SaveCroppedRegionCore(
+            image,
+            filePath,
+            () => CropBoundingBox(image, detection.BoundingBox, out _)
+        );
+    }
+
+    public static bool SaveCroppedRegion(
+        this Mat image,
+        ObbDetectionResult detection,
+        string filePath
+    )
+    {
+        return SaveCroppedRegionCore(
+            image,
+            filePath,
+            () => CropRotatedRect(image, detection.OrientedBoundingBox, out _)
+        );
+    }
+
+    private static List<string> SaveCroppedRegionsCore<TDetection>(
+        Mat image,
+        IReadOnlyList<TDetection> detections,
+        string outputFolder,
+        out List<string> errorMessages,
+        Func<TDetection, Mat?> cropFactory,
+        Func<TDetection, string> labelSelector,
+        Func<TDetection, float> confidenceSelector,
+        string fileNamePrefix
+    )
     {
         errorMessages = [];
-        
-        if (image == null || image.Empty())
-            throw new ArgumentException("图像不能为空", nameof(image));
 
-        if (detections == null || detections.Count == 0)
-            return [];
-
-        // 确保输出文件夹存在
-        if (!Directory.Exists(outputFolder))
+        if (image is null || image.Empty())
         {
-            Directory.CreateDirectory(outputFolder);
+            throw new ArgumentException("Image cannot be null or empty.", nameof(image));
         }
 
-        var savedFiles = new List<string>();
-        int index = 0;
-
-        foreach (var detection in detections)
+        if (detections is null || detections.Count == 0)
         {
+            return [];
+        }
+
+        Directory.CreateDirectory(outputFolder);
+
+        var savedFiles = new List<string>();
+        for (int index = 0; index < detections.Count; index++)
+        {
+            var detection = detections[index];
             try
             {
-                Mat? croppedMat = null;
-
-                // 处理标准边界框
-                if (detection.BoundingBox.HasValue)
+                using var croppedMat = cropFactory(detection);
+                if (croppedMat is null || croppedMat.Empty())
                 {
-                    var box = detection.BoundingBox.Value;
-                    
-                    // 计算边界框与图像的交集区域
-                    int x1 = Math.Max(0, box.X);
-                    int y1 = Math.Max(0, box.Y);
-                    int x2 = Math.Min(image.Width, box.X + box.Width);
-                    int y2 = Math.Min(image.Height, box.Y + box.Height);
-                    
-                    int width = x2 - x1;
-                    int height = y2 - y1;
-
-                    if (width > 0 && height > 0)
-                    {
-                        var rect = new Rect(x1, y1, width, height);
-                        croppedMat = new Mat(image, rect);
-                    }
-                    else
-                    {
-                        errorMessages.Add($"索引 {index} ({detection.LabelName}): 边界框无效 (width={width}, height={height})");
-                    }
-                }
-                else if (detection.OrientedBoundingBox.HasValue)
-                {
-                    var obb = detection.OrientedBoundingBox.Value;
-                    croppedMat = CropRotatedRect(image, obb, out string debugInfo);
-                    if (croppedMat == null)
-                    {
-                        errorMessages.Add($"索引 {index} ({detection.LabelName}): OBB 裁剪失败 - {debugInfo}");
-                    }
+                    errorMessages.Add($"Index {index} ({labelSelector(detection)}): crop result is empty.");
+                    continue;
                 }
 
-                if (croppedMat != null && !croppedMat.Empty())
-                {
-                    // 生成文件名：前缀_标签_索引_置信度.jpg
-                    string fileName = $"{fileNamePrefix}_{detection.LabelName}_{index}_{detection.Confidence:F2}.jpg";
-                    string filePath = Path.Combine(outputFolder, fileName);
-
-                    // 保存裁剪的图像
-                    Cv2.ImWrite(filePath, croppedMat);
-                    savedFiles.Add(filePath);
-
-                    croppedMat.Dispose();
-                }
-                else if (croppedMat == null)
-                {
-                    errorMessages.Add($"索引 {index} ({detection.LabelName}): 裁剪结果为空");
-                }
-
-                index++;
+                string fileName =
+                    $"{fileNamePrefix}_{labelSelector(detection)}_{index}_{confidenceSelector(detection):F2}.jpg";
+                string filePath = Path.Combine(outputFolder, fileName);
+                Cv2.ImWrite(filePath, croppedMat);
+                savedFiles.Add(filePath);
             }
             catch (Exception ex)
             {
-                // 记录错误但继续处理其他检测结果
-                errorMessages.Add($"索引 {index} ({detection.LabelName}): {ex.Message}");
+                errorMessages.Add($"Index {index} ({labelSelector(detection)}): {ex.Message}");
             }
         }
 
         return savedFiles;
     }
 
-    /// <summary>
-    /// 裁剪并保存单个检测区域
-    /// </summary>
-    /// <param name="image">原始图像</param>
-    /// <param name="detection">检测结果</param>
-    /// <param name="filePath">输出文件路径</param>
-    /// <returns>是否保存成功</returns>
-    public static bool SaveCroppedRegion(
-        this Mat image,
-        DetectionResult detection,
-        string filePath)
+    private static bool SaveCroppedRegionCore(
+        Mat image,
+        string filePath,
+        Func<Mat?> cropFactory
+    )
     {
-        if (image == null || image.Empty())
-            throw new ArgumentException("图像不能为空", nameof(image));
-
-        if (detection == null)
-            return false;
+        if (image is null || image.Empty())
+        {
+            throw new ArgumentException("Image cannot be null or empty.", nameof(image));
+        }
 
         try
         {
-            Mat? croppedMat = null;
-
-            // 处理标准边界框
-            if (detection.BoundingBox.HasValue)
+            using var croppedMat = cropFactory();
+            if (croppedMat is null || croppedMat.Empty())
             {
-                var box = detection.BoundingBox.Value;
-                
-                // 计算边界框与图像的交集区域
-                int x1 = Math.Max(0, box.X);
-                int y1 = Math.Max(0, box.Y);
-                int x2 = Math.Min(image.Width, box.X + box.Width);
-                int y2 = Math.Min(image.Height, box.Y + box.Height);
-                
-                int width = x2 - x1;
-                int height = y2 - y1;
-
-                if (width > 0 && height > 0)
-                {
-                    var rect = new Rect(x1, y1, width, height);
-                    croppedMat = new Mat(image, rect);
-                }
-            }
-            // 处理旋转边界框 (OBB)
-            else if (detection.OrientedBoundingBox.HasValue)
-            {
-                croppedMat = CropRotatedRect(image, detection.OrientedBoundingBox.Value, out _);
+                return false;
             }
 
-            if (croppedMat != null)
+            var directory = Path.GetDirectoryName(filePath);
+            if (!string.IsNullOrEmpty(directory))
             {
-                // 确保输出文件夹存在
-                var directory = Path.GetDirectoryName(filePath);
-                if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
-                {
-                    Directory.CreateDirectory(directory);
-                }
-
-                // 保存裁剪的图像
-                Cv2.ImWrite(filePath, croppedMat);
-                croppedMat.Dispose();
-                return true;
+                Directory.CreateDirectory(directory);
             }
 
-            return false;
+            Cv2.ImWrite(filePath, croppedMat);
+            return true;
         }
-        catch (Exception ex)
+        catch
         {
-            Console.WriteLine($"保存裁剪区域失败: {ex.Message}");
             return false;
         }
     }
 
-    /// <summary>
-    /// 裁剪旋转矩形区域
-    /// </summary>
-    /// <param name="image">原始图像</param>
-    /// <param name="obb">旋转边界框</param>
-    /// <param name="debugInfo">调试信息</param>
-    /// <returns>裁剪并旋转校正后的图像</returns>
-    private static Mat? CropRotatedRect(Mat image, OrientedBoundingBox obb, out string debugInfo)
+    private static Mat? CropBoundingBox(
+        Mat image,
+        BoundingBox box,
+        out string debugInfo
+    )
     {
-        debugInfo = "";
+        int x1 = Math.Max(0, box.X);
+        int y1 = Math.Max(0, box.Y);
+        int x2 = Math.Min(image.Width, box.X + box.Width);
+        int y2 = Math.Min(image.Height, box.Y + box.Height);
+        int width = x2 - x1;
+        int height = y2 - y1;
+
+        if (width <= 0 || height <= 0)
+        {
+            debugInfo = $"Invalid bounding box size: width={width}, height={height}.";
+            return null;
+        }
+
+        debugInfo = "Success";
+        return new Mat(image, new Rect(x1, y1, width, height));
+    }
+
+    private static Mat? CropRotatedRect(
+        Mat image,
+        OrientedBoundingBox obb,
+        out string debugInfo
+    )
+    {
+        debugInfo = string.Empty;
         try
         {
-            // 使用角点计算实际尺寸（与绘制方法一致）
             var corners = obb.GetCornerPoints();
-            
-            // 计算实际宽高（从角点）
             float actualWidth = MathF.Sqrt(
-                MathF.Pow(corners[1].X - corners[0].X, 2) + 
-                MathF.Pow(corners[1].Y - corners[0].Y, 2));
+                MathF.Pow(corners[1].X - corners[0].X, 2) +
+                MathF.Pow(corners[1].Y - corners[0].Y, 2)
+            );
             float actualHeight = MathF.Sqrt(
-                MathF.Pow(corners[3].X - corners[0].X, 2) + 
-                MathF.Pow(corners[3].Y - corners[0].Y, 2));
+                MathF.Pow(corners[3].X - corners[0].X, 2) +
+                MathF.Pow(corners[3].Y - corners[0].Y, 2)
+            );
 
-            // 验证尺寸
             if (actualWidth <= 0 || actualHeight <= 0)
             {
-                debugInfo = $"OBB尺寸无效: W={actualWidth:F2}, H={actualHeight:F2}";
+                debugInfo = $"Invalid OBB size: W={actualWidth:F2}, H={actualHeight:F2}.";
                 return null;
             }
 
             int outputWidth = (int)Math.Round(actualWidth);
             int outputHeight = (int)Math.Round(actualHeight);
-            
-            debugInfo = $"OBB: Corners=[({corners[0].X:F1},{corners[0].Y:F1}),({corners[1].X:F1},{corners[1].Y:F1}),({corners[2].X:F1},{corners[2].Y:F1}),({corners[3].X:F1},{corners[3].Y:F1})], Size={outputWidth}x{outputHeight}";
 
-            // 源点（OBB 的四个角点）
             var srcPoints = new Point2f[]
             {
-                new(corners[0].X, corners[0].Y),  // 左上
-                new(corners[1].X, corners[1].Y),  // 右上
-                new(corners[2].X, corners[2].Y),  // 右下
-                new(corners[3].X, corners[3].Y)   // 左下
+                new(corners[0].X, corners[0].Y),
+                new(corners[1].X, corners[1].Y),
+                new(corners[2].X, corners[2].Y),
+                new(corners[3].X, corners[3].Y),
             };
 
-            // 目标点（输出矩形的四个角点）
             var dstPoints = new Point2f[]
             {
-                new(0, 0),                              // 左上
-                new(outputWidth - 1, 0),                // 右上
-                new(outputWidth - 1, outputHeight - 1), // 右下
-                new(0, outputHeight - 1)                // 左下
+                new(0, 0),
+                new(outputWidth - 1, 0),
+                new(outputWidth - 1, outputHeight - 1),
+                new(0, outputHeight - 1),
             };
 
-            // 获取透视变换矩阵
             using var transformMatrix = Cv2.GetPerspectiveTransform(srcPoints, dstPoints);
 
-            // 执行透视变换
             var result = new Mat();
-            Cv2.WarpPerspective(image, result, transformMatrix, new Size(outputWidth, outputHeight),
-                InterpolationFlags.Linear, BorderTypes.Constant, new Scalar(0, 0, 0));
+            Cv2.WarpPerspective(
+                image,
+                result,
+                transformMatrix,
+                new Size(outputWidth, outputHeight),
+                InterpolationFlags.Linear,
+                BorderTypes.Constant,
+                new Scalar(0, 0, 0)
+            );
 
             if (result.Empty())
             {
-                debugInfo += " - 透视变换后图像为空";
+                debugInfo = "Crop result is empty after perspective transform.";
+                result.Dispose();
                 return null;
             }
 
-            debugInfo += $", Result={result.Width}x{result.Height} - 成功";
+            debugInfo = "Success";
             return result;
         }
         catch (Exception ex)
         {
-            debugInfo += $" - 异常: {ex.Message}";
+            debugInfo = ex.Message;
             return null;
         }
     }

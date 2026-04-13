@@ -1,22 +1,36 @@
+using System.Collections.ObjectModel;
+using System.IO;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Extensions;
 using LyuOnnxCore.Extensions;
 using LyuOnnxCore.Helpers;
+using LyuOnnxCore.Interfaces;
 using LyuOnnxCore.Models;
 using MahTemp.Extension;
-using Microsoft.ML.OnnxRuntime;
 using OpenCvSharp;
-using System.Collections.ObjectModel;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
 
 namespace MahTemp.ViewModels;
 
 public partial class DetectionViewModel : ViewModelBase
 {
-    public DetectionViewModel()
+    private readonly IYoloHbbDetectionService _yoloHbbDetectionService;
+    private readonly IYoloObbDetectionService _yoloObbDetectionService;
+    private IReadOnlyList<HbbDetectionResult> _hbbDetectionResults = [];
+    private IReadOnlyList<ObbDetectionResult> _obbDetectionResults = [];
+    private byte[]? _resultImageBytes;
+    private bool _lastDetectionWasObb;
+
+    public DetectionViewModel(
+        IYoloHbbDetectionService yoloHbbDetectionService,
+        IYoloObbDetectionService yoloObbDetectionService
+    )
     {
+        _yoloHbbDetectionService = yoloHbbDetectionService;
+        _yoloObbDetectionService = yoloObbDetectionService;
+
         OnnxModelHelper.GetOnnxModels("OnnxModel").ForEach(o => OnnxSources.Add(o));
         SelectedOnnxModel = OnnxSources.FirstOrDefault();
         SelelctedLabels.CollectionChanged += SelelctedLabels_CollectionChanged;
@@ -36,8 +50,6 @@ public partial class DetectionViewModel : ViewModelBase
 
     [ObservableProperty]
     public partial double ConfidenceThreshold { get; set; } = 0.4;
-
-    #region 检测设置
 
     [ObservableProperty]
     public partial double NmsThreshold { get; set; } = 0.45;
@@ -69,8 +81,6 @@ public partial class DetectionViewModel : ViewModelBase
     [ObservableProperty]
     public partial double OverlayThreshold { get; set; } = 0.8;
 
-    #endregion
-
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(OriginalImage))]
     [NotifyCanExecuteChangedFor(nameof(StartDetectionCommand))]
@@ -79,6 +89,12 @@ public partial class DetectionViewModel : ViewModelBase
     partial void OnImagePathChanged(string? value)
     {
         ResultImage = null;
+        _resultImageBytes = null;
+        _hbbDetectionResults = [];
+        _obbDetectionResults = [];
+        _lastDetectionWasObb = false;
+        SaveCroppedRegionsCommand.NotifyCanExecuteChanged();
+        SaveDetectionResultCommand.NotifyCanExecuteChanged();
     }
 
     public BitmapImage? OriginalImage =>
@@ -86,9 +102,8 @@ public partial class DetectionViewModel : ViewModelBase
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(SaveCroppedRegionsCommand))]
+    [NotifyCanExecuteChangedFor(nameof(SaveDetectionResultCommand))]
     public partial BitmapSource? ResultImage { get; set; }
-
-    private List<DetectionResult> _detectionResults = [];
 
     private void SelelctedLabels_CollectionChanged(
         object? sender,
@@ -111,11 +126,13 @@ public partial class DetectionViewModel : ViewModelBase
         if (dialog.ShowDialog() == true)
         {
             LabesSource.Clear();
+            SelelctedLabels.Clear();
+
             var labels = LabelHelper.LoadLabelsFromFile(dialog.FileName);
-            labels.ForEach(l =>
+            labels.ForEach(label =>
             {
-                LabesSource.Add(l);
-                SelelctedLabels.Add(l);
+                LabesSource.Add(label);
+                SelelctedLabels.Add(label);
             });
         }
     }
@@ -133,7 +150,6 @@ public partial class DetectionViewModel : ViewModelBase
         if (dialog.ShowDialog() == true)
         {
             ImagePath = dialog.FileName;
-            ResultImage = null;
         }
     }
 
@@ -143,76 +159,93 @@ public partial class DetectionViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool IsDetecting { get; set; }
 
+    [ObservableProperty]
+    public partial string? DetectionTime { get; set; }
+
     [RelayCommand(CanExecute = nameof(CanStartDetection))]
     private async Task StartDetection()
     {
         IsDetecting = true;
+        DetectionTime = null;
+
         try
         {
-            await Task.Run(() =>
+            var modelPath = SelectedOnnxModel!.FullPath;
+            using var image = Cv2.ImRead(ImagePath!);
+            var labels = LabesSource.ToArray();
+            var selectedLabels = SelelctedLabels.ToArray();
+            var isObbModel = IsObbModel;
+
+            var detectionOptions = new DetectionOptions
             {
-                using var session = new InferenceSession(SelectedOnnxModel!.FullPath);
-                using var image = Cv2.ImRead(ImagePath!);
+                ConfidenceThreshold = (float)ConfidenceThreshold,
+                NmsThreshold = (float)NmsThreshold,
+                FilterLabels = selectedLabels,
+                IsFilterOverlay = IsFilterOverlay,
+                IsCrossClass = IsCrossClass,
+                OverlayThreshold = (float)OverlayThreshold,
+            };
 
-                if (image.Empty())
-                {
-                    System.Windows.Application.Current.Dispatcher.Invoke(() =>
-                    {
-                        ShowMessage("图像加载失败", "错误");
-                    });
-                    return;
-                }
+            var drawOptions = new DrawOptions
+            {
+                ShowConfidence = ShowConfidence,
+                ShowLabel = ShowLabel,
+                BoxThickness = BoxThickness,
+                FontScale = FontScale,
+                BoxColor = (BoxColor.B, BoxColor.G, BoxColor.R),
+                TextColor = (TextColor.B, TextColor.G, TextColor.R),
+                UseChineseFont = false
+            };
 
-                var detectionOptions = new DetectionOptions
-                {
-                    ConfidenceThreshold = (float)ConfidenceThreshold,
-                    NmsThreshold = (float)NmsThreshold,
-                    FilterLabels = [.. SelelctedLabels],
-                    IsFilterOverlay = IsFilterOverlay,
-                    IsCrossClass = IsCrossClass,
-                    OverlayThreshold = (float)OverlayThreshold,
-                };
+            var sw = System.Diagnostics.Stopwatch.StartNew();
 
-                var drawOptions = new DrawOptions
+            var (drawnMat, detectionResults) = await Task.Run(() =>
+            {
+                if (isObbModel)
                 {
-                    ShowConfidence = ShowConfidence,
-                    ShowLabel = ShowLabel,
-                    BoxThickness = BoxThickness,
-                    FontScale = FontScale,
-                    BoxColor = (BoxColor.B, BoxColor.G, BoxColor.R),
-                    TextColor = (TextColor.B, TextColor.G, TextColor.R),
-                };
-
-                Mat resultMat;
-                List<DetectionResult> detections;
-                if (IsObbModel)
-                {
-                    detections = session.DetectOBB(
+                    var result = _yoloObbDetectionService.Detect(
+                        modelPath,
                         image,
-                        [.. LabesSource],
+                        labels,
                         detectionOptions
                     );
-                    resultMat = image.DrawOBBDetections(detections, drawOptions);
+
+                    var drawnImage = image.DrawOBBDetections(result, drawOptions);
+                    return (drawnImage, (object)result);
                 }
                 else
                 {
-                    detections = session.Detect(
+                    var result = _yoloHbbDetectionService.Detect(
+                        modelPath,
                         image,
-                        [.. LabesSource],
+                        labels,
                         detectionOptions
                     );
-                    resultMat = image.DrawDetections(detections, drawOptions);
-                }
 
-                System.Windows.Application.Current.Dispatcher.Invoke(() =>
-                {
-                    _detectionResults = detections;
-                    ResultImage = resultMat.ToBitmapSource();
-                    SaveCroppedRegionsCommand.NotifyCanExecuteChanged();
-                    SaveDetectionResultCommand.NotifyCanExecuteChanged();
-                });
-                resultMat.Dispose();
+                    var drawnImage = image.DrawDetections(result, drawOptions);
+                    return (drawnImage, (object)result);
+                }
             });
+
+            sw.Stop();
+
+            ResultImage = drawnMat.ToBitmapSource();
+            drawnMat.Dispose();
+            DetectionTime = $"检测耗时: {sw.ElapsedMilliseconds} ms";
+
+            if (isObbModel)
+            {
+                _obbDetectionResults = (ObbDetectionResult[])detectionResults;
+                _lastDetectionWasObb = true;
+            }
+            else
+            {
+                _hbbDetectionResults = (HbbDetectionResult[])detectionResults;
+                _lastDetectionWasObb = false;
+            }
+
+            SaveCroppedRegionsCommand.NotifyCanExecuteChanged();
+            SaveDetectionResultCommand.NotifyCanExecuteChanged();
         }
         catch (Exception ex)
         {
@@ -237,40 +270,52 @@ public partial class DetectionViewModel : ViewModelBase
             var dialog = new Microsoft.Win32.OpenFolderDialog
             {
                 Title = "选择保存裁剪区域的文件夹",
-                Multiselect = false
+                Multiselect = false,
             };
 
-            if (dialog.ShowDialog() == true)
+            if (dialog.ShowDialog() != true)
             {
-                using var image = Cv2.ImRead(ImagePath!);
+                return;
+            }
 
-                if (image.Empty())
-                {
-                    ShowMessage("无法加载原始图像", "错误");
-                    return;
-                }
+            using var image = Cv2.ImRead(ImagePath!);
+            if (image.Empty())
+            {
+                ShowMessage("无法加载原始图像", "错误");
+                return;
+            }
 
-                var savedFiles = image.SaveCroppedRegions(_detectionResults, dialog.FolderName, out var errorMessages);
-
-                string message = $"检测到 {_detectionResults.Count} 个目标\n";
-                message += $"成功保存 {savedFiles.Count} 个裁剪区域\n";
-
-                if (errorMessages.Count > 0)
-                {
-                    message += $"\n失败 {errorMessages.Count} 个:\n";
-                    message += string.Join("\n", errorMessages);
-                }
-
-                message += $"\n\n保存位置:\n{dialog.FolderName}";
-
-                if (savedFiles.Count > 0)
-                {
-                    ShowMessage(message, errorMessages.Count > 0 ? "部分成功" : "成功");
-                }
-                else
-                {
-                    ShowMessage("所有裁剪都失败了\n\n" + string.Join("\n", errorMessages), "错误");
-                }
+            List<string> savedFiles;
+            int detectionCount;
+            if (_lastDetectionWasObb)
+            {
+                detectionCount = _obbDetectionResults.Count;
+                savedFiles = image.SaveCroppedRegions(
+                    _obbDetectionResults,
+                    dialog.FolderName,
+                    out var errorMessagesObb
+                );
+                ShowCropSaveMessage(
+                    dialog.FolderName,
+                    detectionCount,
+                    savedFiles,
+                    errorMessagesObb
+                );
+            }
+            else
+            {
+                detectionCount = _hbbDetectionResults.Count;
+                savedFiles = image.SaveCroppedRegions(
+                    _hbbDetectionResults,
+                    dialog.FolderName,
+                    out var errorMessagesHbb
+                );
+                ShowCropSaveMessage(
+                    dialog.FolderName,
+                    detectionCount,
+                    savedFiles,
+                    errorMessagesHbb
+                );
             }
         }
         catch (Exception ex)
@@ -280,9 +325,8 @@ public partial class DetectionViewModel : ViewModelBase
     }
 
     private bool CanSaveCroppedRegions() =>
-        ResultImage is not null && _detectionResults.Count > 0;
-
-
+        ResultImage is not null
+        && (_lastDetectionWasObb ? _obbDetectionResults.Count : _hbbDetectionResults.Count) > 0;
 
     [RelayCommand(CanExecute = nameof(CanSaveDetectionResult))]
     private void SaveDetectionResult()
@@ -292,9 +336,10 @@ public partial class DetectionViewModel : ViewModelBase
             var dialog = new Microsoft.Win32.SaveFileDialog
             {
                 Title = "保存检测结果",
-                Filter = "PNG图片 (*.png)|*.png|JPEG图片 (*.jpg;*.jpeg)|*.jpg;*.jpeg|BMP图片 (*.bmp)|*.bmp|所有文件 (*.*)|*.*",
+                Filter =
+                    "PNG图片 (*.png)|*.png|JPEG图片 (*.jpg;*.jpeg)|*.jpg;*.jpeg|BMP图片 (*.bmp)|*.bmp|所有文件 (*.*)|*.*",
                 DefaultExt = ".png",
-                FileName = $"detection_result_{DateTime.Now:yyyyMMdd_HHmmss}"
+                FileName = $"detection_result_{DateTime.Now:yyyyMMdd_HHmmss}",
             };
 
             if (dialog.ShowDialog() == true)
@@ -302,7 +347,13 @@ public partial class DetectionViewModel : ViewModelBase
                 using var resultMat = ResultImage!.ToMat();
                 Cv2.ImWrite(dialog.FileName, resultMat);
 
-                ShowMessage($"检测结果已保存到:\n{dialog.FileName}\n\n检测到 {_detectionResults.Count} 个目标", "成功");
+                int detectionCount = _lastDetectionWasObb
+                    ? _obbDetectionResults.Count
+                    : _hbbDetectionResults.Count;
+                ShowMessage(
+                    $"检测结果已保存到:\n{dialog.FileName}\n\n检测到 {detectionCount} 个目标",
+                    "成功"
+                );
             }
         }
         catch (Exception ex)
@@ -312,7 +363,49 @@ public partial class DetectionViewModel : ViewModelBase
     }
 
     private bool CanSaveDetectionResult() =>
-        ResultImage is not null && _detectionResults.Count > 0;
+        ResultImage is not null
+        && _resultImageBytes is { Length: > 0 }
+        && (_lastDetectionWasObb ? _obbDetectionResults.Count : _hbbDetectionResults.Count) > 0;
+
+    private void ShowCropSaveMessage(
+        string folderName,
+        int detectionCount,
+        IReadOnlyList<string> savedFiles,
+        IReadOnlyList<string> errorMessages
+    )
+    {
+        string message = $"检测到 {detectionCount} 个目标\n";
+        message += $"成功保存 {savedFiles.Count} 个裁剪区域\n";
+
+        if (errorMessages.Count > 0)
+        {
+            message += $"\n失败 {errorMessages.Count} 个\n";
+            message += string.Join("\n", errorMessages);
+        }
+
+        message += $"\n\n保存位置:\n{folderName}";
+
+        if (savedFiles.Count > 0)
+        {
+            ShowMessage(message, errorMessages.Count > 0 ? "部分成功" : "成功");
+        }
+        else
+        {
+            ShowMessage("所有裁剪都失败了\n\n" + string.Join("\n", errorMessages), "错误");
+        }
+    }
+
+    private static BitmapSource CreateBitmapSource(byte[] imageBytes)
+    {
+        using var stream = new MemoryStream(imageBytes, writable: false);
+        var bitmap = new BitmapImage();
+        bitmap.BeginInit();
+        bitmap.CacheOption = BitmapCacheOption.OnLoad;
+        bitmap.StreamSource = stream;
+        bitmap.EndInit();
+        bitmap.Freeze();
+        return bitmap;
+    }
 
     #endregion
 }

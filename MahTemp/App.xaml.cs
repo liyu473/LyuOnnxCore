@@ -2,6 +2,7 @@
 using System.Windows;
 using System.Windows.Threading;
 using LyuLogExtension.Extensions;
+using LyuOnnxCore.Register;
 using MahTemp.Services;
 using MahTemp.Views;
 using Microsoft.Extensions.DependencyInjection;
@@ -70,6 +71,7 @@ public partial class App : Application
         var services = new ServiceCollection();
 
         services.AddZLogger();
+        services.AddYoloDetectionServices();
 
         services.RegisterViews();
         services.RegisterViewModels();
