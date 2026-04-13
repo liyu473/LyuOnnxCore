@@ -71,7 +71,7 @@ public partial class App : Application
         var services = new ServiceCollection();
 
         services.AddZLogger();
-        services.AddYoloDetectionServices();
+        services.AddOnnxDetectionServices();
 
         services.RegisterViews();
         services.RegisterViewModels();

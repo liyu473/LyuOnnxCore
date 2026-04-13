@@ -1,4 +1,3 @@
-using LyuOnnxCore.Helpers;
 using LyuOnnxCore.Models;
 using Microsoft.ML.OnnxRuntime;
 using Microsoft.ML.OnnxRuntime.Tensors;
@@ -7,11 +6,11 @@ using OpenCvSharp;
 namespace LyuOnnxCore.Extensions;
 
 /// <summary>
-/// Horizontal bounding box detection helpers for OpenCV Mat.
+/// YOLOX horizontal bounding box detection helpers for OpenCV Mat.
 /// </summary>
-public static class MatDetectionExtensions
+public static class MatYoloXDetectionExtensions
 {
-    public static List<HbbDetectionResult> Detect(
+    public static List<HbbDetectionResult> DetectYoloX(
         this InferenceSession session,
         Mat image,
         string[] labels,
@@ -31,7 +30,7 @@ public static class MatDetectionExtensions
         options ??= new DetectionOptions();
 
         var (inputWidth, inputHeight) = GetModelInputSize(session, options);
-        var (inputTensor, ratio, padW, padH) = PreprocessImage(image, inputWidth, inputHeight);
+        var (inputTensor, ratio) = PreprocessImage(image, inputWidth, inputHeight);
 
         var inputs = new List<NamedOnnxValue>
         {
@@ -42,7 +41,17 @@ public static class MatDetectionExtensions
         var outputTensor = outputs.ElementAt(0).AsTensor<float>();
         var dims = outputTensor.Dimensions.ToArray();
 
-        var results = PostProcess(outputTensor, dims, ratio, padW, padH, options, labels, image.Width, image.Height);
+        var results = PostProcessYoloX(
+            outputTensor,
+            dims,
+            ratio,
+            inputWidth,
+            inputHeight,
+            options,
+            labels,
+            image.Width,
+            image.Height
+        );
 
         if (options.FilterLabels is { Length: > 0 })
         {
@@ -57,91 +66,7 @@ public static class MatDetectionExtensions
         return results;
     }
 
-    public static Mat DrawDetections(
-        this Mat image,
-        IEnumerable<HbbDetectionResult> detections,
-        DrawOptions? options = null
-    )
-    {
-        if (image is null || image.Empty())
-        {
-            throw new ArgumentException("Image cannot be null or empty.", nameof(image));
-        }
-
-        options ??= new DrawOptions();
-        var result = image.Clone();
-        int index = 0;
-
-        foreach (var detection in detections)
-        {
-            var box = detection.BoundingBox;
-            var rect = new Rect(box.X, box.Y, box.Width, box.Height);
-            var color = new Scalar(options.BoxColor.B, options.BoxColor.G, options.BoxColor.R);
-
-            Cv2.Rectangle(result, rect, color, options.BoxThickness);
-
-            string label = options switch
-            {
-                { ShowLabel: true, ShowConfidence: true } => $"[{index}] {detection.LabelName} {detection.Confidence:P0}",
-                { ShowLabel: true } => $"[{index}] {detection.LabelName}",
-                { ShowConfidence: true } => $"[{index}] {detection.Confidence:P0}",
-                _ => $"[{index}]",
-            };
-
-            index++;
-            if (string.IsNullOrEmpty(label))
-            {
-                continue;
-            }
-
-            var textColor = new Scalar(options.TextColor.B, options.TextColor.G, options.TextColor.R);
-            if (options.UseChineseFont) //–‘ƒ‹…± ÷
-            {
-                ChineseTextHelper.PutChineseText(
-                    result,
-                    label,
-                    new Point(box.X, box.Y),
-                    options.ChineseFontFamily,
-                    options.ChineseFontSize,
-                    textColor,
-                    color,
-                    options.BoxThickness
-                );
-            }
-            else
-            {
-                var textSize = Cv2.GetTextSize(
-                    label,
-                    HersheyFonts.HersheySimplex,
-                    options.FontScale,
-                    1,
-                    out int baseline
-                );
-
-                var textRect = new Rect(
-                    box.X,
-                    box.Y - textSize.Height - baseline - 5,
-                    textSize.Width + 5,
-                    textSize.Height + baseline + 5
-                );
-                Cv2.Rectangle(result, textRect, color, -1);
-                Cv2.PutText(
-                    result,
-                    label,
-                    new Point(box.X + 2, box.Y - baseline - 2),
-                    HersheyFonts.HersheySimplex,
-                    options.FontScale,
-                    textColor,
-                    1,
-                    LineTypes.AntiAlias
-                );
-            }
-        }
-
-        return result;
-    }
-
-    public static Mat DetectAndDraw(
+    public static Mat DetectYoloXAndDraw(
         this InferenceSession session,
         Mat image,
         string[] labels,
@@ -149,7 +74,7 @@ public static class MatDetectionExtensions
         DrawOptions? drawOptions = null
     )
     {
-        var results = session.Detect(image, labels, detectionOptions);
+        var results = session.DetectYoloX(image, labels, detectionOptions);
         return image.DrawDetections(results, drawOptions);
     }
 
@@ -184,29 +109,28 @@ public static class MatDetectionExtensions
         return (640, 640);
     }
 
-    private static (DenseTensor<float> tensor, float ratio, int padW, int padH) PreprocessImage(
+    private static (DenseTensor<float> tensor, float ratio) PreprocessImage(
         Mat image,
         int targetWidth,
         int targetHeight
     )
     {
         float ratio = Math.Min((float)targetWidth / image.Width, (float)targetHeight / image.Height);
-        int newWidth = (int)(image.Width * ratio);
-        int newHeight = (int)(image.Height * ratio);
-        int padW = (targetWidth - newWidth) / 2;
-        int padH = (targetHeight - newHeight) / 2;
+        int resizedWidth = (int)(image.Width * ratio);
+        int resizedHeight = (int)(image.Height * ratio);
 
         using var resized = new Mat();
-        Cv2.Resize(image, resized, new Size(newWidth, newHeight), interpolation: InterpolationFlags.Linear);
+        Cv2.Resize(image, resized, new Size(resizedWidth, resizedHeight), interpolation: InterpolationFlags.Linear);
 
         using var padded = new Mat(targetHeight, targetWidth, MatType.CV_8UC3, new Scalar(114, 114, 114));
-        var roi = new Rect(padW, padH, newWidth, newHeight);
+        var roi = new Rect(0, 0, resizedWidth, resizedHeight);
         resized.CopyTo(new Mat(padded, roi));
 
         using var rgb = new Mat();
         Cv2.CvtColor(padded, rgb, ColorConversionCodes.BGR2RGB);
 
         var tensor = new DenseTensor<float>([1, 3, targetHeight, targetWidth]);
+
         unsafe
         {
             byte* ptr = (byte*)rgb.DataPointer;
@@ -224,38 +148,44 @@ public static class MatDetectionExtensions
             }
         }
 
-        return (tensor, ratio, padW, padH);
+        return (tensor, ratio);
     }
 
-    private static List<HbbDetectionResult> PostProcess(
+    private static List<HbbDetectionResult> PostProcessYoloX(
         Tensor<float> outputTensor,
         int[] dims,
         float ratio,
-        int padW,
-        int padH,
+        int inputWidth,
+        int inputHeight,
         DetectionOptions options,
         string[] labels,
         int originalWidth,
         int originalHeight
     )
     {
-        var detections = new List<HbbDetectionResult>();
-
-        int numFeatures = dims[1];
-        int numPredictions = dims[2];
-        int numClasses = numFeatures - 4;
+        var (numPredictions, numFeatures, getValue) = CreateTensorAccessor(outputTensor, dims);
+        int numClasses = numFeatures - 5;
         if (numClasses <= 0)
         {
-            numClasses = labels.Length;
+            throw new InvalidOperationException("YOLOX output does not contain class scores.");
         }
+
+        var decoded = DecodePredictions(getValue, numPredictions, numFeatures, inputWidth, inputHeight);
+        var detections = new List<HbbDetectionResult>();
 
         for (int i = 0; i < numPredictions; i++)
         {
+            float objectness = decoded[i, 4];
+            if (objectness <= 0)
+            {
+                continue;
+            }
+
             float maxScore = 0;
             int maxIndex = 0;
             for (int c = 0; c < numClasses; c++)
             {
-                float score = outputTensor[0, 4 + c, i];
+                float score = objectness * decoded[i, 5 + c];
                 if (score > maxScore)
                 {
                     maxScore = score;
@@ -268,20 +198,20 @@ public static class MatDetectionExtensions
                 continue;
             }
 
-            float cx = outputTensor[0, 0, i];
-            float cy = outputTensor[0, 1, i];
-            float bw = outputTensor[0, 2, i];
-            float bh = outputTensor[0, 3, i];
+            float cx = decoded[i, 0];
+            float cy = decoded[i, 1];
+            float bw = decoded[i, 2];
+            float bh = decoded[i, 3];
 
-            float x1 = (cx - bw / 2 - padW) / ratio;
-            float y1 = (cy - bh / 2 - padH) / ratio;
-            float x2 = (cx + bw / 2 - padW) / ratio;
-            float y2 = (cy + bh / 2 - padH) / ratio;
+            float x1 = (cx - bw / 2f) / ratio;
+            float y1 = (cy - bh / 2f) / ratio;
+            float x2 = (cx + bw / 2f) / ratio;
+            float y2 = (cy + bh / 2f) / ratio;
 
-            x1 = Math.Max(0, x1);
-            y1 = Math.Max(0, y1);
-            x2 = Math.Min(originalWidth, x2);
-            y2 = Math.Min(originalHeight, y2);
+            x1 = Math.Clamp(x1, 0, originalWidth);
+            y1 = Math.Clamp(y1, 0, originalHeight);
+            x2 = Math.Clamp(x2, 0, originalWidth);
+            y2 = Math.Clamp(y2, 0, originalHeight);
 
             if (x2 <= x1 || y2 <= y1)
             {
@@ -305,6 +235,85 @@ public static class MatDetectionExtensions
         }
 
         return ApplyNms(detections, options.NmsThreshold);
+    }
+
+    private static (int numPredictions, int numFeatures, Func<int, int, float> getValue) CreateTensorAccessor(
+        Tensor<float> outputTensor,
+        int[] dims
+    )
+    {
+        if (dims.Length == 3)
+        {
+            if (dims[1] > dims[2])
+            {
+                return (dims[1], dims[2], (predictionIndex, featureIndex) => outputTensor[0, predictionIndex, featureIndex]);
+            }
+
+            return (dims[2], dims[1], (predictionIndex, featureIndex) => outputTensor[0, featureIndex, predictionIndex]);
+        }
+
+        if (dims.Length == 2)
+        {
+            if (dims[0] > dims[1])
+            {
+                return (dims[0], dims[1], (predictionIndex, featureIndex) => outputTensor[predictionIndex, featureIndex]);
+            }
+
+            return (dims[1], dims[0], (predictionIndex, featureIndex) => outputTensor[featureIndex, predictionIndex]);
+        }
+
+        throw new NotSupportedException($"Unsupported YOLOX output dimensions: [{string.Join(", ", dims)}]");
+    }
+
+    private static float[,] DecodePredictions(
+        Func<int, int, float> getValue,
+        int numPredictions,
+        int numFeatures,
+        int inputWidth,
+        int inputHeight
+    )
+    {
+        var outputs = new float[numPredictions, numFeatures];
+        for (int i = 0; i < numPredictions; i++)
+        {
+            for (int f = 0; f < numFeatures; f++)
+            {
+                outputs[i, f] = getValue(i, f);
+            }
+        }
+
+        var strides = new List<int> { 8, 16, 32 };
+        int totalGridCount = 0;
+        foreach (var stride in strides)
+        {
+            totalGridCount += (inputHeight / stride) * (inputWidth / stride);
+        }
+
+        if (totalGridCount != numPredictions)
+        {
+            return outputs;
+        }
+
+        int index = 0;
+        foreach (var stride in strides)
+        {
+            int gridHeight = inputHeight / stride;
+            int gridWidth = inputWidth / stride;
+
+            for (int gy = 0; gy < gridHeight; gy++)
+            {
+                for (int gx = 0; gx < gridWidth; gx++)
+                {
+                    outputs[index, 0] = (outputs[index, 0] + gx) * stride;
+                    outputs[index, 1] = (outputs[index, 1] + gy) * stride;
+                    outputs[index, 2] = MathF.Exp(outputs[index, 2]) * stride;
+                    outputs[index, 3] = MathF.Exp(outputs[index, 3]) * stride;
+                    index++;
+                }
+            }
+        }
+
+        return outputs;
     }
 
     private static List<HbbDetectionResult> ApplyNms(
