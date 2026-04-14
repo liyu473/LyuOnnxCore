@@ -38,7 +38,7 @@ public class DrawOptions
     /// <summary>
     /// 是否使用中文字体（支持中文标签显示）
     /// </summary>
-    public bool UseChineseFont { get; set; } = true;
+    public bool UseChineseFont { get; set; } = false;
 
     /// <summary>
     /// 中文字体名称（如 "微软雅黑", "SimHei", "Arial Unicode MS"）
