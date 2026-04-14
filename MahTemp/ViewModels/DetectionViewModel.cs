@@ -4,49 +4,96 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Extensions;
 using LyuOnnxCore.Extensions;
 using LyuOnnxCore.Helpers;
 using LyuOnnxCore.Interfaces;
 using LyuOnnxCore.Models;
 using MahTemp.Extension;
+using MahTemp.Model;
 using OpenCvSharp;
 
 namespace MahTemp.ViewModels;
 
 public partial class DetectionViewModel : ViewModelBase
 {
+    private const string OnnxModelFolder = "OnnxModel";
+
     private readonly IYoloHbbDetectionService _yoloHbbDetectionService;
     private readonly IYoloObbDetectionService _yoloObbDetectionService;
+    private readonly IYoloXHbbDetectionService _yoloXHbbDetectionService;
     private IReadOnlyList<HbbDetectionResult> _hbbDetectionResults = [];
     private IReadOnlyList<ObbDetectionResult> _obbDetectionResults = [];
-    private byte[]? _resultImageBytes;
     private bool _lastDetectionWasObb;
 
     public DetectionViewModel(
         IYoloHbbDetectionService yoloHbbDetectionService,
-        IYoloObbDetectionService yoloObbDetectionService
+        IYoloObbDetectionService yoloObbDetectionService,
+        IYoloXHbbDetectionService yoloXHbbDetectionService
     )
     {
         _yoloHbbDetectionService = yoloHbbDetectionService;
         _yoloObbDetectionService = yoloObbDetectionService;
+        _yoloXHbbDetectionService = yoloXHbbDetectionService;
 
-        OnnxModelHelper.GetOnnxModels("OnnxModel").ForEach(o => OnnxSources.Add(o));
-        SelectedOnnxModel = OnnxSources.FirstOrDefault();
         SelelctedLabels.CollectionChanged += SelelctedLabels_CollectionChanged;
+
+        DetectionModes.Add(
+            new DetectionModeOption(
+                DetectionMode.YoloXHbb,
+                "YOLOX HBB",
+                "Use the YOLOX decoder for horizontal bounding box detection."
+            )
+        );
+        DetectionModes.Add(
+            new DetectionModeOption(
+                DetectionMode.YoloHbb,
+                "YOLO HBB",
+                "Use the standard YOLO head for horizontal bounding box detection."
+            )
+        );
+        DetectionModes.Add(
+            new DetectionModeOption(
+                DetectionMode.YoloObb,
+                "YOLO OBB",
+                "Use the rotated-box pipeline for oriented object detection."
+            )
+        );
+
+        SelectedDetectionMode = DetectionModes.First();
+        RefreshModels();
     }
 
-    #region Onnx
-
     public ObservableCollection<OnnxModelInfo> OnnxSources { get; } = [];
+
+    public ObservableCollection<string> LabesSource { get; } = [];
+
+    public ObservableCollection<string> SelelctedLabels { get; } = [];
+
+    public ObservableCollection<DetectionModeOption> DetectionModes { get; } = [];
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(StartDetectionCommand))]
     public partial OnnxModelInfo? SelectedOnnxModel { get; set; }
 
-    public ObservableCollection<string> LabesSource { get; } = [];
+    partial void OnSelectedOnnxModelChanged(OnnxModelInfo? value)
+    {
+        TryLoadLabelsForModel(value);
+        ClearDetectionState(keepImagePath: true);
+        StartDetectionCommand.NotifyCanExecuteChanged();
+    }
 
-    public ObservableCollection<string> SelelctedLabels { get; } = [];
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(StartDetectionCommand))]
+    public partial DetectionModeOption? SelectedDetectionMode { get; set; }
+
+    partial void OnSelectedDetectionModeChanged(DetectionModeOption? value)
+    {
+        DetectionSummary = value is null
+            ? null
+            : $"{value.DisplayName}: {value.Description}";
+        ClearDetectionState(keepImagePath: true);
+        StartDetectionCommand.NotifyCanExecuteChanged();
+    }
 
     [ObservableProperty]
     public partial double ConfidenceThreshold { get; set; } = 0.4;
@@ -88,29 +135,52 @@ public partial class DetectionViewModel : ViewModelBase
 
     partial void OnImagePathChanged(string? value)
     {
-        ResultImage = null;
-        _resultImageBytes = null;
-        _hbbDetectionResults = [];
-        _obbDetectionResults = [];
-        _lastDetectionWasObb = false;
-        SaveCroppedRegionsCommand.NotifyCanExecuteChanged();
-        SaveDetectionResultCommand.NotifyCanExecuteChanged();
+        ClearDetectionState(keepImagePath: true);
+        StartDetectionCommand.NotifyCanExecuteChanged();
     }
 
     public BitmapImage? OriginalImage =>
-        ImagePath.IsNullOrWhiteSpace() ? null : new(new Uri(ImagePath));
+        string.IsNullOrWhiteSpace(ImagePath) ? null : new BitmapImage(new Uri(ImagePath));
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(SaveCroppedRegionsCommand))]
     [NotifyCanExecuteChangedFor(nameof(SaveDetectionResultCommand))]
     public partial BitmapSource? ResultImage { get; set; }
 
-    private void SelelctedLabels_CollectionChanged(
-        object? sender,
-        System.Collections.Specialized.NotifyCollectionChangedEventArgs e
-    )
+    [ObservableProperty]
+    public partial bool IsDetecting { get; set; }
+
+    [ObservableProperty]
+    public partial string? DetectionTime { get; set; }
+
+    [ObservableProperty]
+    public partial string? DetectionSummary { get; set; }
+
+    [RelayCommand]
+    private void RefreshModels()
     {
-        StartDetectionCommand.NotifyCanExecuteChanged();
+        string? selectedModelPath = SelectedOnnxModel?.FullPath;
+        OnnxSources.Clear();
+
+        try
+        {
+            foreach (
+                var model in OnnxModelHelper.GetOnnxModels(OnnxModelFolder, SearchOption.AllDirectories)
+            )
+            {
+                OnnxSources.Add(model);
+            }
+        }
+        catch (DirectoryNotFoundException)
+        {
+            DetectionSummary = $"Model folder '{OnnxModelFolder}' was not found.";
+            SelectedOnnxModel = null;
+            return;
+        }
+
+        SelectedOnnxModel =
+            OnnxSources.FirstOrDefault(model => model.FullPath == selectedModelPath)
+            ?? OnnxSources.FirstOrDefault();
     }
 
     [RelayCommand]
@@ -118,22 +188,14 @@ public partial class DetectionViewModel : ViewModelBase
     {
         var dialog = new Microsoft.Win32.OpenFileDialog
         {
-            Title = "选择标签文件",
-            Filter = "文本文件 (*.txt)|*.txt|所有文件 (*.*)|*.*",
+            Title = "Select labels file",
+            Filter = "Text files (*.txt)|*.txt|All files (*.*)|*.*",
             DefaultExt = ".txt",
         };
 
         if (dialog.ShowDialog() == true)
         {
-            LabesSource.Clear();
-            SelelctedLabels.Clear();
-
-            var labels = LabelHelper.LoadLabelsFromFile(dialog.FileName);
-            labels.ForEach(label =>
-            {
-                LabesSource.Add(label);
-                SelelctedLabels.Add(label);
-            });
+            LoadLabelsFromPath(dialog.FileName);
         }
     }
 
@@ -142,9 +204,8 @@ public partial class DetectionViewModel : ViewModelBase
     {
         var dialog = new Microsoft.Win32.OpenFileDialog
         {
-            Title = "选择图片",
-            Filter =
-                "图片文件 (*.jpg;*.jpeg;*.png;*.bmp)|*.jpg;*.jpeg;*.png;*.bmp|所有文件 (*.*)|*.*",
+            Title = "Select image",
+            Filter = "Images (*.jpg;*.jpeg;*.png;*.bmp)|*.jpg;*.jpeg;*.png;*.bmp|All files (*.*)|*.*",
         };
 
         if (dialog.ShowDialog() == true)
@@ -152,15 +213,6 @@ public partial class DetectionViewModel : ViewModelBase
             ImagePath = dialog.FileName;
         }
     }
-
-    [ObservableProperty]
-    public partial bool IsObbModel { get; set; }
-
-    [ObservableProperty]
-    public partial bool IsDetecting { get; set; }
-
-    [ObservableProperty]
-    public partial string? DetectionTime { get; set; }
 
     [RelayCommand(CanExecute = nameof(CanStartDetection))]
     private async Task StartDetection()
@@ -170,17 +222,22 @@ public partial class DetectionViewModel : ViewModelBase
 
         try
         {
-            var modelPath = SelectedOnnxModel!.FullPath;
+            if (SelectedOnnxModel is null || SelectedDetectionMode is null)
+            {
+                return;
+            }
+
             using var image = Cv2.ImRead(ImagePath!);
-            var labels = LabesSource.ToArray();
-            var selectedLabels = SelelctedLabels.ToArray();
-            var isObbModel = IsObbModel;
+            if (image.Empty())
+            {
+                throw new InvalidOperationException("Failed to load the selected image.");
+            }
 
             var detectionOptions = new DetectionOptions
             {
                 ConfidenceThreshold = (float)ConfidenceThreshold,
                 NmsThreshold = (float)NmsThreshold,
-                FilterLabels = selectedLabels,
+                FilterLabels = [.. SelelctedLabels],
                 IsFilterOverlay = IsFilterOverlay,
                 IsCrossClass = IsCrossClass,
                 OverlayThreshold = (float)OverlayThreshold,
@@ -194,73 +251,47 @@ public partial class DetectionViewModel : ViewModelBase
                 FontScale = FontScale,
                 BoxColor = (BoxColor.B, BoxColor.G, BoxColor.R),
                 TextColor = (TextColor.B, TextColor.G, TextColor.R),
-                UseChineseFont = false
+                UseChineseFont = false,
             };
 
-            var sw = System.Diagnostics.Stopwatch.StartNew();
+            var labels = LabesSource.ToArray();
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
 
-            var (drawnMat, detectionResults) = await Task.Run(() =>
-            {
-                if (isObbModel)
-                {
-                    var result = _yoloObbDetectionService.Detect(
-                        modelPath,
-                        image,
-                        labels,
-                        detectionOptions
-                    );
+            var detectionResult = await Task.Run(() =>
+                DetectObjects(
+                    SelectedDetectionMode.Mode,
+                    SelectedOnnxModel.FullPath,
+                    image,
+                    labels,
+                    detectionOptions,
+                    drawOptions
+                )
+            );
 
-                    var drawnImage = image.DrawOBBDetections(result, drawOptions);
-                    return (drawnImage, (object)result);
-                }
-                else
-                {
-                    var result = _yoloHbbDetectionService.Detect(
-                        modelPath,
-                        image,
-                        labels,
-                        detectionOptions
-                    );
+            stopwatch.Stop();
 
-                    var drawnImage = image.DrawDetections(result, drawOptions);
-                    return (drawnImage, (object)result);
-                }
-            });
+            ResultImage = detectionResult.DrawnImage.ToBitmapSource();
+            detectionResult.DrawnImage.Dispose();
+            _hbbDetectionResults = detectionResult.HbbResults;
+            _obbDetectionResults = detectionResult.ObbResults;
+            _lastDetectionWasObb = detectionResult.IsObb;
 
-            sw.Stop();
-
-            ResultImage = drawnMat.ToBitmapSource();
-            drawnMat.Dispose();
-            DetectionTime = $"检测耗时: {sw.ElapsedMilliseconds} ms";
-
-            if (isObbModel)
-            {
-                _obbDetectionResults = (ObbDetectionResult[])detectionResults;
-                _lastDetectionWasObb = true;
-            }
-            else
-            {
-                _hbbDetectionResults = (HbbDetectionResult[])detectionResults;
-                _lastDetectionWasObb = false;
-            }
+            DetectionTime = $"Elapsed: {stopwatch.ElapsedMilliseconds} ms";
+            DetectionSummary =
+                $"{SelectedDetectionMode.DisplayName}: detected {detectionResult.Count} object(s)";
 
             SaveCroppedRegionsCommand.NotifyCanExecuteChanged();
             SaveDetectionResultCommand.NotifyCanExecuteChanged();
         }
         catch (Exception ex)
         {
-            ShowMessage($"检测失败: {ex.Message}\n\n{ex.StackTrace}", "错误");
+            ShowMessage($"Detection failed: {ex.Message}\n\n{ex.StackTrace}", "Error");
         }
         finally
         {
             IsDetecting = false;
         }
     }
-
-    private bool CanStartDetection() =>
-        !ImagePath.IsNullOrWhiteSpace()
-        && SelectedOnnxModel is not null
-        && SelelctedLabels.Count > 0;
 
     [RelayCommand(CanExecute = nameof(CanSaveCroppedRegions))]
     private void SaveCroppedRegions()
@@ -269,7 +300,7 @@ public partial class DetectionViewModel : ViewModelBase
         {
             var dialog = new Microsoft.Win32.OpenFolderDialog
             {
-                Title = "选择保存裁剪区域的文件夹",
+                Title = "Select output folder",
                 Multiselect = false,
             };
 
@@ -281,52 +312,43 @@ public partial class DetectionViewModel : ViewModelBase
             using var image = Cv2.ImRead(ImagePath!);
             if (image.Empty())
             {
-                ShowMessage("无法加载原始图像", "错误");
+                ShowMessage("Failed to load the original image.", "Error");
                 return;
             }
 
-            List<string> savedFiles;
-            int detectionCount;
             if (_lastDetectionWasObb)
             {
-                detectionCount = _obbDetectionResults.Count;
-                savedFiles = image.SaveCroppedRegions(
+                var savedFiles = image.SaveCroppedRegions(
                     _obbDetectionResults,
                     dialog.FolderName,
-                    out var errorMessagesObb
+                    out var errorMessages
                 );
                 ShowCropSaveMessage(
                     dialog.FolderName,
-                    detectionCount,
+                    _obbDetectionResults.Count,
                     savedFiles,
-                    errorMessagesObb
+                    errorMessages
                 );
+                return;
             }
-            else
-            {
-                detectionCount = _hbbDetectionResults.Count;
-                savedFiles = image.SaveCroppedRegions(
-                    _hbbDetectionResults,
-                    dialog.FolderName,
-                    out var errorMessagesHbb
-                );
-                ShowCropSaveMessage(
-                    dialog.FolderName,
-                    detectionCount,
-                    savedFiles,
-                    errorMessagesHbb
-                );
-            }
+
+            var hbbSavedFiles = image.SaveCroppedRegions(
+                _hbbDetectionResults,
+                dialog.FolderName,
+                out var hbbErrorMessages
+            );
+            ShowCropSaveMessage(
+                dialog.FolderName,
+                _hbbDetectionResults.Count,
+                hbbSavedFiles,
+                hbbErrorMessages
+            );
         }
         catch (Exception ex)
         {
-            ShowMessage($"保存失败: {ex.Message}", "错误");
+            ShowMessage($"Save failed: {ex.Message}", "Error");
         }
     }
-
-    private bool CanSaveCroppedRegions() =>
-        ResultImage is not null
-        && (_lastDetectionWasObb ? _obbDetectionResults.Count : _hbbDetectionResults.Count) > 0;
 
     [RelayCommand(CanExecute = nameof(CanSaveDetectionResult))]
     private void SaveDetectionResult()
@@ -335,9 +357,8 @@ public partial class DetectionViewModel : ViewModelBase
         {
             var dialog = new Microsoft.Win32.SaveFileDialog
             {
-                Title = "保存检测结果",
-                Filter =
-                    "PNG图片 (*.png)|*.png|JPEG图片 (*.jpg;*.jpeg)|*.jpg;*.jpeg|BMP图片 (*.bmp)|*.bmp|所有文件 (*.*)|*.*",
+                Title = "Save detection result",
+                Filter = "PNG image (*.png)|*.png|JPEG image (*.jpg;*.jpeg)|*.jpg;*.jpeg|BMP image (*.bmp)|*.bmp|All files (*.*)|*.*",
                 DefaultExt = ".png",
                 FileName = $"detection_result_{DateTime.Now:yyyyMMdd_HHmmss}",
             };
@@ -347,25 +368,139 @@ public partial class DetectionViewModel : ViewModelBase
                 using var resultMat = ResultImage!.ToMat();
                 Cv2.ImWrite(dialog.FileName, resultMat);
 
-                int detectionCount = _lastDetectionWasObb
-                    ? _obbDetectionResults.Count
-                    : _hbbDetectionResults.Count;
                 ShowMessage(
-                    $"检测结果已保存到:\n{dialog.FileName}\n\n检测到 {detectionCount} 个目标",
-                    "成功"
+                    $"Saved detection result to:\n{dialog.FileName}\n\nDetected {CurrentDetectionCount} object(s).",
+                    "Success"
                 );
             }
         }
         catch (Exception ex)
         {
-            ShowMessage($"保存失败: {ex.Message}", "错误");
+            ShowMessage($"Save failed: {ex.Message}", "Error");
         }
     }
 
+    private bool CanStartDetection() =>
+        !string.IsNullOrWhiteSpace(ImagePath)
+        && SelectedOnnxModel is not null
+        && SelectedDetectionMode is not null
+        && SelelctedLabels.Count > 0;
+
+    private bool CanSaveCroppedRegions() =>
+        ResultImage is not null && CurrentDetectionCount > 0;
+
     private bool CanSaveDetectionResult() =>
-        ResultImage is not null
-        && _resultImageBytes is { Length: > 0 }
-        && (_lastDetectionWasObb ? _obbDetectionResults.Count : _hbbDetectionResults.Count) > 0;
+        ResultImage is not null && CurrentDetectionCount > 0;
+
+    private int CurrentDetectionCount =>
+        _lastDetectionWasObb ? _obbDetectionResults.Count : _hbbDetectionResults.Count;
+
+    private void SelelctedLabels_CollectionChanged(
+        object? sender,
+        System.Collections.Specialized.NotifyCollectionChangedEventArgs e
+    )
+    {
+        StartDetectionCommand.NotifyCanExecuteChanged();
+    }
+
+    private void LoadLabelsFromPath(string labelFilePath)
+    {
+        LabesSource.Clear();
+        SelelctedLabels.Clear();
+
+        foreach (var label in LabelHelper.LoadLabelsFromFile(labelFilePath))
+        {
+            LabesSource.Add(label);
+            SelelctedLabels.Add(label);
+        }
+    }
+
+    private void TryLoadLabelsForModel(OnnxModelInfo? model)
+    {
+        if (model is null)
+        {
+            return;
+        }
+
+        string modelDirectory = Path.GetDirectoryName(model.FullPath) ?? string.Empty;
+        string[] labelCandidates =
+        [
+            Path.Combine(modelDirectory, "classes.txt"),
+            Path.Combine(OnnxModelFolder, "classes.txt"),
+        ];
+
+        string? labelPath = labelCandidates.FirstOrDefault(File.Exists);
+        if (labelPath is not null)
+        {
+            LoadLabelsFromPath(labelPath);
+        }
+    }
+
+    private void ClearDetectionState(bool keepImagePath)
+    {
+        ResultImage = null;
+        DetectionTime = null;
+        _hbbDetectionResults = [];
+        _obbDetectionResults = [];
+        _lastDetectionWasObb = false;
+
+        if (!keepImagePath)
+        {
+            ImagePath = null;
+        }
+
+        SaveCroppedRegionsCommand.NotifyCanExecuteChanged();
+        SaveDetectionResultCommand.NotifyCanExecuteChanged();
+    }
+
+    private DetectionExecutionResult DetectObjects(
+        DetectionMode mode,
+        string modelPath,
+        Mat image,
+        string[] labels,
+        DetectionOptions detectionOptions,
+        DrawOptions drawOptions
+    )
+    {
+        switch (mode)
+        {
+            case DetectionMode.YoloObb:
+            {
+                var results = _yoloObbDetectionService.Detect(
+                    modelPath,
+                    image,
+                    labels,
+                    detectionOptions
+                );
+                var drawnImage = image.DrawOBBDetections(results, drawOptions);
+                return new DetectionExecutionResult(drawnImage, [], results, true);
+            }
+
+            case DetectionMode.YoloHbb:
+            {
+                var results = _yoloHbbDetectionService.Detect(
+                    modelPath,
+                    image,
+                    labels,
+                    detectionOptions
+                );
+                var drawnImage = image.DrawDetections(results, drawOptions);
+                return new DetectionExecutionResult(drawnImage, results, [], false);
+            }
+
+            default:
+            {
+                var results = _yoloXHbbDetectionService.Detect(
+                    modelPath,
+                    image,
+                    labels,
+                    detectionOptions
+                );
+                var drawnImage = image.DrawDetections(results, drawOptions);
+                return new DetectionExecutionResult(drawnImage, results, [], false);
+            }
+        }
+    }
 
     private void ShowCropSaveMessage(
         string folderName,
@@ -374,38 +509,37 @@ public partial class DetectionViewModel : ViewModelBase
         IReadOnlyList<string> errorMessages
     )
     {
-        string message = $"检测到 {detectionCount} 个目标\n";
-        message += $"成功保存 {savedFiles.Count} 个裁剪区域\n";
+        string message = $"Detected {detectionCount} object(s).\n";
+        message += $"Saved {savedFiles.Count} cropped region(s).";
 
         if (errorMessages.Count > 0)
         {
-            message += $"\n失败 {errorMessages.Count} 个\n";
+            message += $"\n\nFailed: {errorMessages.Count}\n";
             message += string.Join("\n", errorMessages);
         }
 
-        message += $"\n\n保存位置:\n{folderName}";
+        message += $"\n\nOutput folder:\n{folderName}";
 
         if (savedFiles.Count > 0)
         {
-            ShowMessage(message, errorMessages.Count > 0 ? "部分成功" : "成功");
+            ShowMessage(message, errorMessages.Count > 0 ? "Partial Success" : "Success");
         }
         else
         {
-            ShowMessage("所有裁剪都失败了\n\n" + string.Join("\n", errorMessages), "错误");
+            ShowMessage(
+                "All cropped regions failed to save.\n\n" + string.Join("\n", errorMessages),
+                "Error"
+            );
         }
     }
 
-    private static BitmapSource CreateBitmapSource(byte[] imageBytes)
+    private sealed record DetectionExecutionResult(
+        Mat DrawnImage,
+        IReadOnlyList<HbbDetectionResult> HbbResults,
+        IReadOnlyList<ObbDetectionResult> ObbResults,
+        bool IsObb
+    )
     {
-        using var stream = new MemoryStream(imageBytes, writable: false);
-        var bitmap = new BitmapImage();
-        bitmap.BeginInit();
-        bitmap.CacheOption = BitmapCacheOption.OnLoad;
-        bitmap.StreamSource = stream;
-        bitmap.EndInit();
-        bitmap.Freeze();
-        return bitmap;
+        public int Count => IsObb ? ObbResults.Count : HbbResults.Count;
     }
-
-    #endregion
 }

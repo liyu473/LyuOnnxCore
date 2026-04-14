@@ -126,24 +126,21 @@ public static class MatYoloXDetectionExtensions
         var roi = new Rect(0, 0, resizedWidth, resizedHeight);
         resized.CopyTo(new Mat(padded, roi));
 
-        using var rgb = new Mat();
-        Cv2.CvtColor(padded, rgb, ColorConversionCodes.BGR2RGB);
-
         var tensor = new DenseTensor<float>([1, 3, targetHeight, targetWidth]);
 
         unsafe
         {
-            byte* ptr = (byte*)rgb.DataPointer;
-            int channels = rgb.Channels();
+            byte* ptr = (byte*)padded.DataPointer;
+            int channels = padded.Channels();
 
             for (int y = 0; y < targetHeight; y++)
             {
                 for (int x = 0; x < targetWidth; x++)
                 {
                     int idx = (y * targetWidth + x) * channels;
-                    tensor[0, 0, y, x] = ptr[idx] / 255f;
-                    tensor[0, 1, y, x] = ptr[idx + 1] / 255f;
-                    tensor[0, 2, y, x] = ptr[idx + 2] / 255f;
+                    tensor[0, 0, y, x] = ptr[idx];
+                    tensor[0, 1, y, x] = ptr[idx + 1];
+                    tensor[0, 2, y, x] = ptr[idx + 2];
                 }
             }
         }
@@ -170,7 +167,10 @@ public static class MatYoloXDetectionExtensions
             throw new InvalidOperationException("YOLOX output does not contain class scores.");
         }
 
-        var decoded = DecodePredictions(getValue, numPredictions, numFeatures, inputWidth, inputHeight);
+        bool isDecodedOutput = IsDecodedOutput(getValue, numPredictions, inputWidth, inputHeight);
+        var decoded = isDecodedOutput
+            ? CopyPredictions(getValue, numPredictions, numFeatures)
+            : DecodePredictions(getValue, numPredictions, numFeatures, inputWidth, inputHeight);
         var detections = new List<HbbDetectionResult>();
 
         for (int i = 0; i < numPredictions; i++)
@@ -235,6 +235,50 @@ public static class MatYoloXDetectionExtensions
         }
 
         return ApplyNms(detections, options.NmsThreshold);
+    }
+
+    private static bool IsDecodedOutput(
+        Func<int, int, float> getValue,
+        int numPredictions,
+        int inputWidth,
+        int inputHeight
+    )
+    {
+        int sampleCount = Math.Min(numPredictions, 64);
+        float threshold = Math.Min(inputWidth, inputHeight) / 4f;
+
+        for (int i = 0; i < sampleCount; i++)
+        {
+            if (
+                getValue(i, 0) > threshold
+                || getValue(i, 1) > threshold
+                || getValue(i, 2) > threshold
+                || getValue(i, 3) > threshold
+            )
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static float[,] CopyPredictions(
+        Func<int, int, float> getValue,
+        int numPredictions,
+        int numFeatures
+    )
+    {
+        var outputs = new float[numPredictions, numFeatures];
+        for (int i = 0; i < numPredictions; i++)
+        {
+            for (int f = 0; f < numFeatures; f++)
+            {
+                outputs[i, f] = getValue(i, f);
+            }
+        }
+
+        return outputs;
     }
 
     private static (int numPredictions, int numFeatures, Func<int, int, float> getValue) CreateTensorAccessor(
