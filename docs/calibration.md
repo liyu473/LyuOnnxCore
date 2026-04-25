@@ -35,6 +35,12 @@ var axisCompensation = serviceProvider.GetRequiredService<IAxisPositionCompensat
 - 传入图片路径集合
 - 传入 `OpenCvSharp.Mat` 集合
 
+支持三种标定板：
+
+- `CalibrationPatternType.Chessboard`：棋盘格
+- `CalibrationPatternType.SymmetricCirclesGrid`：对称圆点板 / 圆形孔标定板
+- `CalibrationPatternType.AsymmetricCirclesGrid`：非对称圆点板 / 圆形孔标定板
+
 方法签名：
 
 ```csharp
@@ -49,14 +55,31 @@ CameraCalibrateResult Calibrate(
     Size patternSize,
     float squareSizeMm
 );
+
+CameraCalibrateResult Calibrate(
+    IEnumerable<string> imagePaths,
+    Size patternSize,
+    float pointSpacingMm,
+    CalibrationPatternType patternType
+);
+
+CameraCalibrateResult Calibrate(
+    IEnumerable<Mat> images,
+    Size patternSize,
+    float pointSpacingMm,
+    CalibrationPatternType patternType
+);
 ```
 
 参数说明：
 
-- `patternSize`：棋盘格内角点数量，`Width` 是列数，`Height` 是行数
-- `squareSizeMm`：单个方格的实际边长，单位毫米
+- `patternSize`：棋盘格时表示内角点数量；圆点板时表示圆心数量；`Width` 是列数，`Height` 是行数
+- `squareSizeMm`：棋盘格单个方格的实际边长，单位毫米
+- `pointSpacingMm`：相邻标定点的实际间距；棋盘格为内角点间距，圆点板为圆心距，单位毫米
+- `patternType`：标定板类型，不传时默认使用棋盘格，兼容旧调用
+- 非对称圆点板按 OpenCV 的点位模型生成物理点：同一行相邻圆心间距为 `2 * pointSpacingMm`，相邻行错位 `pointSpacingMm`
 
-示例：
+棋盘格示例：
 
 ```csharp
 using LyuOnnxCore.Calibration.Interface;
@@ -81,9 +104,25 @@ Console.WriteLine($"ReprojectionError: {result.ReprojectionError:F4}");
 Console.WriteLine($"SuccessfulImageCount: {result.SuccessfulImageCount}");
 ```
 
+圆点板示例：
+
+```csharp
+using LyuOnnxCore.Calibration.Interface;
+using LyuOnnxCore.Calibration.Models;
+using OpenCvSharp;
+
+var result = cameraCalibration.Calibrate(
+    imagePaths,
+    new Size(11, 8),
+    20f,
+    CalibrationPatternType.SymmetricCirclesGrid
+);
+```
+
 `CameraCalibrateResult` 主要字段：
 
 - `ImageSize`：参与标定的图像分辨率
+- `PatternType`：参与标定的标定板类型
 - `CameraMatrix`：3x3 相机内参矩阵
 - `CameraMatrixFlat`：扁平化后的相机内参，便于序列化和反序列化
 - `DistortionCoefficients`：畸变系数
@@ -116,10 +155,11 @@ var restored = cameraCalibration.DeserializeResult(json);
 
 ### 相机标定建议
 
-- 建议至少准备 6 到 10 张不同角度的棋盘格图片
+- 建议至少准备 6 到 10 张不同角度的标定板图片
 - 所有标定图尽量使用相同分辨率
-- 棋盘格尽量覆盖画面不同区域，不要都只在中间
-- `patternSize` 要传内角点数，不是黑白格总数
+- 标定板尽量覆盖画面不同区域，不要都只在中间
+- 棋盘格的 `patternSize` 要传内角点数，不是黑白格总数
+- 圆点板的 `patternSize` 要传圆心数量，不是圆孔外框数量
 
 ## 3. 九点标定
 
@@ -312,7 +352,7 @@ var compensatedWorld = axisCompensation.PixelToWorldWithCompensation(
 
 推荐按下面顺序使用：
 
-1. 采集棋盘格图片，调用 `ICameraCalibration` 做相机标定
+1. 采集棋盘格或圆点板图片，调用 `ICameraCalibration` 做相机标定
 2. 采集九点或更多点位，调用 `INinePointCalibration` 建立像素到平台的映射
 3. 正常运行时，将检测结果像素点传给 `PixelToWorld`
 4. 如果平台相对标定零位有偏移，再使用 `IAxisPositionCompensation`
@@ -323,10 +363,10 @@ var compensatedWorld = axisCompensation.PixelToWorldWithCompensation(
 
 常见原因：
 
-- 棋盘格参数设置错误
+- 标定板参数设置错误
 - 图片数量太少
 - 图片分辨率不一致
-- 棋盘格没有被完整拍到
+- 标定板没有被完整拍到
 - 图像模糊，角点提取不稳定
 
 ### 2. 为什么九点标定误差很大

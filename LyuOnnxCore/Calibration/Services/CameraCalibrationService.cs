@@ -12,6 +12,13 @@ internal sealed class CameraCalibrationService : ICameraCalibration
         IEnumerable<string> imagePaths,
         Size patternSize,
         float squareSizeMm
+    ) => Calibrate(imagePaths, patternSize, squareSizeMm, CalibrationPatternType.Chessboard);
+
+    public CameraCalibrateResult Calibrate(
+        IEnumerable<string> imagePaths,
+        Size patternSize,
+        float pointSpacingMm,
+        CalibrationPatternType patternType
     )
     {
         ArgumentNullException.ThrowIfNull(imagePaths);
@@ -29,7 +36,7 @@ internal sealed class CameraCalibrationService : ICameraCalibration
                 mats.Add(Cv2.ImRead(imagePath, ImreadModes.Color));
             }
 
-            return Calibrate(mats, patternSize, squareSizeMm);
+            return Calibrate(mats, patternSize, pointSpacingMm, patternType);
         }
         finally
         {
@@ -44,14 +51,22 @@ internal sealed class CameraCalibrationService : ICameraCalibration
         IEnumerable<Mat> images,
         Size patternSize,
         float squareSizeMm
+    ) => Calibrate(images, patternSize, squareSizeMm, CalibrationPatternType.Chessboard);
+
+    public CameraCalibrateResult Calibrate(
+        IEnumerable<Mat> images,
+        Size patternSize,
+        float pointSpacingMm,
+        CalibrationPatternType patternType
     )
     {
         ArgumentNullException.ThrowIfNull(images);
 
         ValidatePatternSize(patternSize);
-        if (squareSizeMm <= 0)
+        ValidatePatternType(patternType);
+        if (pointSpacingMm <= 0)
         {
-            throw new ArgumentOutOfRangeException(nameof(squareSizeMm), "Square size must be greater than 0.");
+            throw new ArgumentOutOfRangeException(nameof(pointSpacingMm), "Pattern point spacing must be greater than 0.");
         }
 
         var imageList = images.Where(static image => image is not null && !image.Empty()).ToList();
@@ -66,7 +81,7 @@ internal sealed class CameraCalibrationService : ICameraCalibration
             .ThenByDescending(static group => group.Key.Width * group.Key.Height)
             .FirstOrDefault() ?? throw new InvalidOperationException("Unable to determine an effective image resolution from the input images.");
         var imageSize = new Size(dominantResolutionGroup.Key.Width, dominantResolutionGroup.Key.Height);
-        var objectTemplate = CreateObjectPoints(patternSize, squareSizeMm);
+        var objectTemplate = CreateObjectPoints(patternSize, pointSpacingMm, patternType);
         var objectPoints = new List<IEnumerable<Point3f>>();
         var imagePoints = new List<IEnumerable<Point2f>>();
         int skippedMismatchedResolutionCount = 0;
@@ -79,7 +94,7 @@ internal sealed class CameraCalibrationService : ICameraCalibration
                 continue;
             }
 
-            if (!TryFindChessboardCorners(image, patternSize, out var corners))
+            if (!TryFindPatternPoints(image, patternSize, patternType, out var corners))
             {
                 continue;
             }
@@ -91,7 +106,7 @@ internal sealed class CameraCalibrationService : ICameraCalibration
         if (imagePoints.Count < 3)
         {
             throw new InvalidOperationException(
-                $"Camera calibration needs at least 3 images with a full chessboard detection, but only {imagePoints.Count} were valid."
+                $"Camera calibration needs at least 3 images with a full {patternType} detection, but only {imagePoints.Count} were valid."
             );
         }
 
@@ -124,6 +139,7 @@ internal sealed class CameraCalibrationService : ICameraCalibration
                 return new CameraCalibrateResult
                 {
                     ImageSize = imageSize,
+                    PatternType = patternType,
                     CameraMatrix = cameraMatrix,
                     DistortionCoefficients = distortionCoefficients,
                     RotationVectors = rotationVectors,
@@ -195,6 +211,14 @@ internal sealed class CameraCalibrationService : ICameraCalibration
         ) ?? throw new InvalidOperationException("Failed to deserialize camera calibration result.");
     }
 
+    private static void ValidatePatternType(CalibrationPatternType patternType)
+    {
+        if (!Enum.IsDefined(patternType))
+        {
+            throw new ArgumentOutOfRangeException(nameof(patternType), patternType, "Unsupported calibration pattern type.");
+        }
+    }
+
     private static void ValidatePatternSize(Size patternSize)
     {
         if (patternSize.Width < 2 || patternSize.Height < 2)
@@ -203,7 +227,11 @@ internal sealed class CameraCalibrationService : ICameraCalibration
         }
     }
 
-    private static Point3f[] CreateObjectPoints(Size patternSize, float squareSizeMm)
+    private static Point3f[] CreateObjectPoints(
+        Size patternSize,
+        float pointSpacingMm,
+        CalibrationPatternType patternType
+    )
     {
         var points = new Point3f[patternSize.Width * patternSize.Height];
         int index = 0;
@@ -212,11 +240,29 @@ internal sealed class CameraCalibrationService : ICameraCalibration
         {
             for (int column = 0; column < patternSize.Width; column++)
             {
-                points[index++] = new Point3f(column * squareSizeMm, row * squareSizeMm, 0);
+                points[index++] = patternType == CalibrationPatternType.AsymmetricCirclesGrid
+                    ? new Point3f((2 * column + row % 2) * pointSpacingMm, row * pointSpacingMm, 0)
+                    : new Point3f(column * pointSpacingMm, row * pointSpacingMm, 0);
             }
         }
 
         return points;
+    }
+
+    private static bool TryFindPatternPoints(
+        Mat image,
+        Size patternSize,
+        CalibrationPatternType patternType,
+        out Point2f[] points
+    )
+    {
+        return patternType switch
+        {
+            CalibrationPatternType.Chessboard => TryFindChessboardCorners(image, patternSize, out points),
+            CalibrationPatternType.SymmetricCirclesGrid => TryFindCircleGridCenters(image, patternSize, patternType, out points),
+            CalibrationPatternType.AsymmetricCirclesGrid => TryFindCircleGridCenters(image, patternSize, patternType, out points),
+            _ => throw new ArgumentOutOfRangeException(nameof(patternType), patternType, "Unsupported calibration pattern type.")
+        };
     }
 
     private static bool TryFindChessboardCorners(Mat image, Size patternSize, out Point2f[] corners)
@@ -252,6 +298,50 @@ internal sealed class CameraCalibrationService : ICameraCalibration
         );
 
         return corners.Length == patternSize.Width * patternSize.Height;
+    }
+
+    private static bool TryFindCircleGridCenters(
+        Mat image,
+        Size patternSize,
+        CalibrationPatternType patternType,
+        out Point2f[] centers
+    )
+    {
+        using var gray = PrepareGrayImage(image);
+        using var blobDetector = SimpleBlobDetector.Create(new SimpleBlobDetector.Params());
+        var flags = patternType switch
+        {
+            CalibrationPatternType.SymmetricCirclesGrid => FindCirclesGridFlags.SymmetricGrid,
+            CalibrationPatternType.AsymmetricCirclesGrid => FindCirclesGridFlags.AsymmetricGrid | FindCirclesGridFlags.Clustering,
+            _ => throw new ArgumentOutOfRangeException(nameof(patternType), patternType, "Unsupported circle grid pattern type.")
+        };
+
+        if (TryFindCirclesGrid(gray, patternSize, flags, blobDetector, out centers))
+        {
+            return centers.Length == patternSize.Width * patternSize.Height;
+        }
+
+        // 圆形孔透光时可能是亮点，反色后再尝试一次。
+        using var inverted = new Mat();
+        Cv2.BitwiseNot(gray, inverted);
+        if (!TryFindCirclesGrid(inverted, patternSize, flags, blobDetector, out centers))
+        {
+            centers = [];
+            return false;
+        }
+
+        return centers.Length == patternSize.Width * patternSize.Height;
+    }
+
+    private static bool TryFindCirclesGrid(
+        Mat gray,
+        Size patternSize,
+        FindCirclesGridFlags flags,
+        Feature2D blobDetector,
+        out Point2f[] centers
+    )
+    {
+        return Cv2.FindCirclesGrid(gray, patternSize, out centers, flags, blobDetector);
     }
 
     private static Mat PrepareGrayImage(Mat image)

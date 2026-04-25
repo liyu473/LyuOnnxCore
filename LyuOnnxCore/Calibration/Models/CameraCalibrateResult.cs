@@ -7,6 +7,8 @@ public sealed class CameraCalibrateResult
 {
     public Size ImageSize { get; set; }
 
+    public CalibrationPatternType PatternType { get; set; } = CalibrationPatternType.Chessboard;
+
     [JsonIgnore]
     public double[,] CameraMatrix { get; set; } = CreateIdentityMatrix();
 

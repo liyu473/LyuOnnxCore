@@ -12,9 +12,23 @@ public interface ICameraCalibration
     );
 
     CameraCalibrateResult Calibrate(
+        IEnumerable<string> imagePaths,
+        Size patternSize,
+        float pointSpacingMm,
+        CalibrationPatternType patternType
+    );
+
+    CameraCalibrateResult Calibrate(
         IEnumerable<Mat> images,
         Size patternSize,
         float squareSizeMm
+    );
+
+    CameraCalibrateResult Calibrate(
+        IEnumerable<Mat> images,
+        Size patternSize,
+        float pointSpacingMm,
+        CalibrationPatternType patternType
     );
 
     string SerializeResult(

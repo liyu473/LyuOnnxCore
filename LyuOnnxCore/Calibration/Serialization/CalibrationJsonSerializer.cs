@@ -13,6 +13,7 @@ internal static class CalibrationJsonSerializer
             WriteIndented = writeIndented
         };
 
+        options.Converters.Add(new JsonStringEnumConverter());
         options.Converters.Add(new OpenCvSizeJsonConverter());
         options.Converters.Add(new OpenCvPoint2dJsonConverter());
         options.Converters.Add(new OpenCvVec3dJsonConverter());
