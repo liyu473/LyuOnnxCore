@@ -8,7 +8,7 @@
 
 
 		<PackageId>LyuOnnxCore</PackageId>
-		<Version>2.0.0</Version>
+		<Version>2.0.1</Version>
 		<Authors>Liyu</Authors>
 		<Description>为yolo转onnx模型的相关拓展</Description>
 		<PackageTags>onnx,opencv</PackageTags>

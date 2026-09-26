@@ -40,6 +40,11 @@ public class OnnxModelInfo
     /// </summary>
     public string[] Labels { get; set; } = [];
 
+    /// <summary>
+    /// 模型类型。没有足够元数据判断时为 Unknown。
+    /// </summary>
+    public OnnxModelType ModelType { get; set; }
+
     private static string FormatFileSize(long bytes)
     {
         string[] sizes = ["B", "KB", "MB", "GB", "TB"];

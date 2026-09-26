@@ -1,6 +1,6 @@
 # LyuOnnxCore
 
-[![NuGet](https://img.shields.io/badge/NuGet-2.0.0-blue.svg)](https://www.nuget.org/packages/LyuOnnxCore)
+[![NuGet](https://img.shields.io/badge/NuGet-2.0.1-blue.svg)](https://www.nuget.org/packages/LyuOnnxCore)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 基于 ONNX Runtime 和 OpenCvSharp 的 YOLO 检测类库，支持：
@@ -11,12 +11,12 @@
 - 置信度、NMS、重叠框过滤和结果绘制
 - 从 ONNX 元数据或标签文件读取模型类别
 
-当前包版本为 `2.0.0`。此版本调整了检测服务的标签参数语义，不兼容旧版调用方式。
+当前包版本为 `2.0.1`。此版本调整了检测服务的标签参数语义，不兼容旧版调用方式。
 
 ## 安装
 
 ```bash
-dotnet add package LyuOnnxCore --version 2.0.0
+dotnet add package LyuOnnxCore --version 2.0.1
 ```
 
 ## 标签读取与筛选
@@ -149,6 +149,14 @@ foreach (var model in models)
 ```
 
 `OnnxModelInfo.Labels` 是按模型类别 ID 排列的完整标签列表，可用于显示标签选择控件。传给检测服务时，只传用户选中的标签即可。
+
+模型类型可以通过以下 API 读取：
+
+```csharp
+var modelType = OnnxModelHelper.GetModelType(modelPath);
+// OnnxModelType.YoloHbb、YoloObb、YoloXHbb 或 Unknown
+```
+
 
 ## 低级扩展方法
 

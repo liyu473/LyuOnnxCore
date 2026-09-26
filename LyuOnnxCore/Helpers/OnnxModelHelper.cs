@@ -42,7 +42,8 @@ public static class OnnxModelHelper
                     FullPath = fileInfo.FullName,
                     FileSize = fileInfo.Length,
                     LastModified = fileInfo.LastWriteTime,
-                    Labels = GetModelLabels(filePath)
+                    Labels = GetModelLabels(filePath),
+                    ModelType = GetModelType(filePath)
                 });
             }
 
@@ -100,6 +101,83 @@ public static class OnnxModelHelper
         }
 
         return [];
+    }
+
+    /// <summary>
+    /// 读取模型类型。优先使用 ONNX 元数据，旧模型只能根据文件名和输出结构有限推断。
+    /// </summary>
+    public static OnnxModelType GetModelType(string modelPath)
+    {
+        if (string.IsNullOrWhiteSpace(modelPath) || !File.Exists(modelPath))
+            return OnnxModelType.Unknown;
+
+        try
+        {
+            using var session = new InferenceSession(modelPath);
+            var metadata = session.ModelMetadata.CustomMetadataMap;
+
+            foreach (var key in new[] { "model_type", "framework" })
+            {
+                if (!metadata.TryGetValue(key, out var value))
+                    continue;
+
+                if (value.Contains("yolox", StringComparison.OrdinalIgnoreCase))
+                    return OnnxModelType.YoloXHbb;
+
+                if (value.Contains("obb", StringComparison.OrdinalIgnoreCase)
+                    || value.Contains("oriented", StringComparison.OrdinalIgnoreCase))
+                {
+                    return OnnxModelType.YoloObb;
+                }
+
+                if (value.Contains("hbb", StringComparison.OrdinalIgnoreCase)
+                    || value.Contains("horizontal", StringComparison.OrdinalIgnoreCase))
+                {
+                    return OnnxModelType.YoloHbb;
+                }
+            }
+
+            if (metadata.TryGetValue("task", out var task)
+                && (task.Contains("obb", StringComparison.OrdinalIgnoreCase)
+                    || task.Contains("oriented", StringComparison.OrdinalIgnoreCase)))
+            {
+                return OnnxModelType.YoloObb;
+            }
+
+            var fileName = Path.GetFileNameWithoutExtension(modelPath);
+            if (fileName.Contains("yolox", StringComparison.OrdinalIgnoreCase))
+                return OnnxModelType.YoloXHbb;
+
+            if (fileName.Contains("obb", StringComparison.OrdinalIgnoreCase))
+                return OnnxModelType.YoloObb;
+
+            var labels = GetModelLabels(modelPath);
+            if (labels.Length == 0 || session.OutputNames.Count == 0)
+                return OnnxModelType.Unknown;
+
+            var dimensions = session.OutputMetadata[session.OutputNames[0]].Dimensions;
+            if (dimensions.Length != 3)
+                return OnnxModelType.Unknown;
+
+            var first = dimensions[1];
+            var second = dimensions[2];
+            if (second > first)
+            {
+                if (first == labels.Length + 4)
+                    return OnnxModelType.YoloHbb;
+
+                if (first == labels.Length + 5)
+                    return OnnxModelType.YoloObb;
+            }
+
+            if (first > second && second == labels.Length + 5)
+                return OnnxModelType.YoloXHbb;
+        }
+        catch
+        {
+        }
+
+        return OnnxModelType.Unknown;
     }
 
     private static string[] ParseLabels(string value)
