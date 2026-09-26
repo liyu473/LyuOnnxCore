@@ -53,11 +53,6 @@ public static class MatYoloXDetectionExtensions
             image.Height
         );
 
-        if (options.FilterLabels is { Length: > 0 })
-        {
-            results = [.. results.Where(result => options.FilterLabels.Contains(result.LabelName))];
-        }
-
         if (options.IsFilterOverlay)
         {
             results = results.FilterContained(options.OverlayThreshold, options.IsCrossClass);
@@ -167,6 +162,13 @@ public static class MatYoloXDetectionExtensions
             throw new InvalidOperationException("YOLOX output does not contain class scores.");
         }
 
+        if (labels.Length < numClasses)
+        {
+            throw new ArgumentException(
+                $"Labels are incomplete: the model contains {numClasses} classes, but only {labels.Length} labels were provided. Provide the complete label table in model class ID order.",
+                nameof(labels)
+            );
+        }
         bool isDecodedOutput = IsDecodedOutput(getValue, numPredictions, inputWidth, inputHeight);
         var decoded = isDecodedOutput
             ? CopyPredictions(getValue, numPredictions, numFeatures)

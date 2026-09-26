@@ -1,4 +1,7 @@
 using System.IO;
+using System.Text.Json;
+using System.Text.RegularExpressions;
+using Microsoft.ML.OnnxRuntime;
 using LyuOnnxCore.Models;
 
 namespace LyuOnnxCore.Helpers;
@@ -38,7 +41,8 @@ public static class OnnxModelHelper
                     FileName = fileInfo.Name,
                     FullPath = fileInfo.FullName,
                     FileSize = fileInfo.Length,
-                    LastModified = fileInfo.LastWriteTime
+                    LastModified = fileInfo.LastWriteTime,
+                    Labels = GetModelLabels(filePath)
                 });
             }
 
@@ -51,6 +55,103 @@ public static class OnnxModelHelper
         }
 
         return models;
+    }
+
+    /// <summary>
+    /// 从 ONNX 元数据或同目录标签文件读取模型类别名称。
+    /// </summary>
+    public static string[] GetModelLabels(string modelPath)
+    {
+        if (string.IsNullOrWhiteSpace(modelPath) || !File.Exists(modelPath))
+            return [];
+
+        try
+        {
+            using var session = new InferenceSession(modelPath);
+            if (session.ModelMetadata.CustomMetadataMap.TryGetValue("names", out var names))
+            {
+                var metadataLabels = ParseLabels(names);
+                if (metadataLabels.Length > 0)
+                    return metadataLabels;
+            }
+        }
+        catch
+        {
+        }
+
+        var directory = Path.GetDirectoryName(modelPath) ?? string.Empty;
+        var sidecarPaths = new[]
+        {
+            Path.ChangeExtension(modelPath, ".txt"),
+            Path.Combine(directory, "classes.txt")
+        };
+
+        foreach (var sidecarPath in sidecarPaths.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            if (!File.Exists(sidecarPath))
+                continue;
+
+            var labels = File.ReadLines(sidecarPath)
+                .Select(line => line.Trim())
+                .Where(line => !string.IsNullOrWhiteSpace(line))
+                .ToArray();
+            if (labels.Length > 0)
+                return labels;
+        }
+
+        return [];
+    }
+
+    private static string[] ParseLabels(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return [];
+
+        try
+        {
+            using var document = JsonDocument.Parse(value);
+            if (document.RootElement.ValueKind == JsonValueKind.Array)
+            {
+                var labels = document.RootElement.EnumerateArray()
+                    .Select(item => item.ValueKind == JsonValueKind.String ? item.GetString() : null)
+                    .ToArray();
+                return labels.All(item => !string.IsNullOrWhiteSpace(item))
+                    ? labels.Select(item => item!).ToArray()
+                    : [];
+            }
+
+            if (document.RootElement.ValueKind == JsonValueKind.Object)
+            {
+                var labels = document.RootElement.EnumerateObject()
+                    .Where(item => int.TryParse(item.Name, out _))
+                    .Select(item => (
+                        Index: int.Parse(item.Name),
+                        Name: item.Value.ValueKind == JsonValueKind.String ? item.Value.GetString() : null
+                    ))
+                    .Where(item => !string.IsNullOrWhiteSpace(item.Name))
+                    .OrderBy(item => item.Index)
+                    .ToArray();
+                if (labels.Select((item, index) => item.Index == index).All(item => item))
+                    return labels.Select(item => item.Name!).ToArray();
+            }
+        }
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException)
+        {
+        }
+
+        var indexedLabels = Regex.Matches(value, @"(?<index>\d+)\s*:\s*'(?<name>(?:\\.|[^'])*)'")
+            .Select(match =>
+            {
+                var name = match.Groups["name"].Value.Replace("\\'", "'").Replace("\\\\", "\\");
+                return (Index: int.Parse(match.Groups["index"].Value), Name: name);
+            })
+            .OrderBy(item => item.Index)
+            .ToArray();
+
+        return indexedLabels.Length > 0
+            && indexedLabels.Select((item, index) => item.Index == index).All(item => item)
+            ? indexedLabels.Select(item => item.Name).ToArray()
+            : [];
     }
 
     /// <summary>

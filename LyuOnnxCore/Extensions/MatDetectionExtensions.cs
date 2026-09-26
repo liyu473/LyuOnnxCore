@@ -44,11 +44,6 @@ public static class MatDetectionExtensions
 
         var results = PostProcess(outputTensor, dims, ratio, padW, padH, options, labels, image.Width, image.Height);
 
-        if (options.FilterLabels is { Length: > 0 })
-        {
-            results = [.. results.Where(result => options.FilterLabels.Contains(result.LabelName))];
-        }
-
         if (options.IsFilterOverlay)
         {
             results = results.FilterContained(options.OverlayThreshold, options.IsCrossClass);
@@ -249,6 +244,13 @@ public static class MatDetectionExtensions
             numClasses = labels.Length;
         }
 
+        if (labels.Length < numClasses)
+        {
+            throw new ArgumentException(
+                $"Labels are incomplete: the model contains {numClasses} classes, but only {labels.Length} labels were provided. Provide the complete label table in model class ID order.",
+                nameof(labels)
+            );
+        }
         for (int i = 0; i < numPredictions; i++)
         {
             float maxScore = 0;

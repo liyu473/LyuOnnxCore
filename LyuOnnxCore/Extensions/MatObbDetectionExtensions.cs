@@ -44,11 +44,6 @@ public static class MatObbDetectionExtensions
 
         var results = PostProcessObb(outputTensor, dims, ratio, padW, padH, options, labels);
 
-        if (options.FilterLabels is { Length: > 0 })
-        {
-            results = [.. results.Where(result => options.FilterLabels.Contains(result.LabelName))];
-        }
-
         if (options.IsFilterOverlay)
         {
             results = results.FilterContained(options.OverlayThreshold, options.IsCrossClass);
@@ -255,6 +250,13 @@ public static class MatObbDetectionExtensions
             numClasses = labels.Length;
         }
 
+        if (labels.Length < numClasses)
+        {
+            throw new ArgumentException(
+                $"Labels are incomplete: the model contains {numClasses} classes, but only {labels.Length} labels were provided. Provide the complete label table in model class ID order.",
+                nameof(labels)
+            );
+        }
         for (int i = 0; i < numPredictions; i++)
         {
             float maxScore = 0;

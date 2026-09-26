@@ -16,11 +16,6 @@ public class DetectionOptions
     public float NmsThreshold { get; set; } = 0.45f;
 
     /// <summary>
-    /// 要过滤的标签名称列表，为空或null时返回所有检测结果
-    /// </summary>
-    public string[]? FilterLabels { get; set; }
-
-    /// <summary>
     /// 是否过滤重合框
     /// </summary>
     public bool IsFilterOverlay { get; set; } = true;

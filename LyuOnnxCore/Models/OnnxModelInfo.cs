@@ -35,6 +35,11 @@ public class OnnxModelInfo
     /// </summary>
     public DateTime LastModified { get; set; }
 
+    /// <summary>
+    /// 模型类别名称，顺序与模型类别 ID 一致。
+    /// </summary>
+    public string[] Labels { get; set; } = [];
+
     private static string FormatFileSize(long bytes)
     {
         string[] sizes = ["B", "KB", "MB", "GB", "TB"];

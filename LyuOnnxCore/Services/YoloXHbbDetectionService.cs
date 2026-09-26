@@ -1,4 +1,5 @@
 using LyuOnnxCore.Extensions;
+using LyuOnnxCore.Helpers;
 using LyuOnnxCore.Interfaces;
 using LyuOnnxCore.Models;
 using Microsoft.ML.OnnxRuntime;
@@ -41,18 +42,11 @@ internal sealed class YoloXHbbDetectionService : IYoloXHbbDetectionService
             throw new ArgumentException("Image cannot be null or empty.", nameof(image));
         }
 
-        var labelArray = labels?
-            .Where(static label => !string.IsNullOrWhiteSpace(label))
-            .ToArray()
-            ?? [];
-
-        if (labelArray.Length == 0)
-        {
-            throw new ArgumentException("At least one label is required.", nameof(labels));
-        }
+        var (modelLabels, requestedLabels) = DetectionLabelHelper.Prepare(modelPath, labels);
 
         using var session = new InferenceSession(modelPath);
-        return [.. session.DetectYoloX(image, labelArray, detectionOptions)];
+        var results = session.DetectYoloX(image, modelLabels, detectionOptions);
+        return [.. results.Where(result => requestedLabels.Contains(result.LabelName))];
     }
 
     public Mat DetectAndVisualize(
@@ -90,18 +84,12 @@ internal sealed class YoloXHbbDetectionService : IYoloXHbbDetectionService
             throw new ArgumentException("Image cannot be null or empty.", nameof(image));
         }
 
-        var labelArray = labels?
-            .Where(static label => !string.IsNullOrWhiteSpace(label))
-            .ToArray()
-            ?? [];
-
-        if (labelArray.Length == 0)
-        {
-            throw new ArgumentException("At least one label is required.", nameof(labels));
-        }
+        var (modelLabels, requestedLabels) = DetectionLabelHelper.Prepare(modelPath, labels);
 
         using var session = new InferenceSession(modelPath);
-        return session.DetectYoloXAndDraw(image, labelArray, detectionOptions, drawOptions);
+        var results = session.DetectYoloX(image, modelLabels, detectionOptions)
+            .Where(result => requestedLabels.Contains(result.LabelName));
+        return image.DrawDetections(results, drawOptions);
     }
 
     private static void ValidateFilePath(string path, string paramName)

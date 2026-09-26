@@ -1,4 +1,5 @@
 using LyuOnnxCore.Extensions;
+using LyuOnnxCore.Helpers;
 using LyuOnnxCore.Interfaces;
 using LyuOnnxCore.Models;
 using Microsoft.ML.OnnxRuntime;
@@ -40,18 +41,11 @@ internal sealed class YoloObbDetectionService : IYoloObbDetectionService
             throw new ArgumentException("Image cannot be null or empty.", nameof(image));
         }
 
-        var labelArray = labels?
-            .Where(static label => !string.IsNullOrWhiteSpace(label))
-            .ToArray()
-            ?? [];
-
-        if (labelArray.Length == 0)
-        {
-            throw new ArgumentException("At least one label is required.", nameof(labels));
-        }
+        var (modelLabels, requestedLabels) = DetectionLabelHelper.Prepare(modelPath, labels);
 
         using var session = new InferenceSession(modelPath);
-        return [.. session.DetectOBB(image, labelArray, detectionOptions)];
+        var results = session.DetectOBB(image, modelLabels, detectionOptions);
+        return [.. results.Where(result => requestedLabels.Contains(result.LabelName))];
     }
 
     public Mat DetectAndVisualize(
@@ -88,18 +82,12 @@ internal sealed class YoloObbDetectionService : IYoloObbDetectionService
             throw new ArgumentException("Image cannot be null or empty.", nameof(image));
         }
 
-        var labelArray = labels?
-            .Where(static label => !string.IsNullOrWhiteSpace(label))
-            .ToArray()
-            ?? [];
-
-        if (labelArray.Length == 0)
-        {
-            throw new ArgumentException("At least one label is required.", nameof(labels));
-        }
+        var (modelLabels, requestedLabels) = DetectionLabelHelper.Prepare(modelPath, labels);
 
         using var session = new InferenceSession(modelPath);
-        return session.DetectOBBAndDraw(image, labelArray, detectionOptions, drawOptions);
+        var results = session.DetectOBB(image, modelLabels, detectionOptions)
+            .Where(result => requestedLabels.Contains(result.LabelName));
+        return image.DrawOBBDetections(results, drawOptions);
     }
 
     private static void ValidateFilePath(string path, string paramName)
